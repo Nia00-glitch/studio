@@ -18,7 +18,7 @@ export default function EmergencyScreen() {
       handleSendLocation();
     }
     // Auto-start recording if enabled
-    if (settings.enableRecording) {
+    if (settings.enableRecording && !isRecording) {
       startRecording();
       setStatus("Hidden recording started automatically.");
       toast({ title: "Recording Started", description: "Recording was started based on your settings." });

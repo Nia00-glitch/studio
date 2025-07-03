@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useContext, useEffect, useState, useCallback } from "react";
+import { useContext, useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Settings, Shield, Mic, CheckCircle, AlertTriangle, WifiOff } from "lucide-react";
 import { EmergencyContext } from "@/contexts/EmergencyContext";
@@ -15,6 +14,7 @@ export default function Home() {
   const { toast } = useToast();
   const [isListening, setIsListening] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(true);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const handleActivate = useCallback(() => {
     console.log("Emergency mode activated by command.");
@@ -33,72 +33,70 @@ export default function Home() {
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-IN';
+    if (!recognitionRef.current) {
+        recognitionRef.current = new SpeechRecognition();
+        const recognition = recognitionRef.current;
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-IN';
 
-    let recognitionAborted = false;
-    const startListening = () => {
-      recognitionAborted = false;
-      recognition.start();
-      setIsListening(true);
-    };
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => {
+          setIsListening(false);
+          // Only restart if permission is granted and not in an emergency
+          if (permissionGranted && !isEmergencyActive && recognitionRef.current) {
+            try {
+              recognition.start();
+            } catch(e) {
+                // This can happen if start is called while it's already starting.
+                console.log("Could not restart recognition", e)
+            }
+          }
+        };
+        
+        recognition.onerror = (event) => {
+          if (event.error === 'not-allowed') {
+            setPermissionGranted(false);
+            toast({
+              variant: "destructive",
+              title: "Microphone Access Denied",
+              description: "Please enable microphone access to use voice commands.",
+            });
+          }
+          if (event.error !== 'aborted') {
+            console.error("Speech recognition error:", event.error);
+          }
+          setIsListening(false);
+        };
 
-    const stopListening = () => {
-      recognitionAborted = true;
-      recognition.stop();
-      setIsListening(false);
+        recognition.onresult = (event) => {
+          const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+          
+          const emergencyWakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
+          
+          if (transcript.includes("nia") && (transcript.includes("recording start") || transcript.includes("recording start karo"))) {
+            startRecording();
+            toast({ title: "Recording Started", description: "Voice command recognized." });
+          } else if (transcript.includes("nia") && (transcript.includes("recording stop") || transcript.includes("recording band karo"))) {
+            stopRecording();
+            toast({ title: "Recording Stopped", description: "Voice command recognized." });
+          } else if (emergencyWakeWords.some(word => transcript.includes(word))) {
+            handleActivate();
+          }
+        };
     }
     
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => {
-      setIsListening(false);
-      if (permissionGranted && !isEmergencyActive && !recognitionAborted) {
-        setTimeout(startListening, 100);
-      }
-    };
-    
-    recognition.onerror = (event) => {
-      if (event.error === 'not-allowed') {
-        setPermissionGranted(false);
-        toast({
-          variant: "destructive",
-          title: "Microphone Access Denied",
-          description: "Please enable microphone access to use voice commands.",
-        });
-      }
-      
-      if (event.error !== 'aborted') {
-        console.error("Speech recognition error:", event.error);
-      }
-      setIsListening(false);
-    };
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-      
-      const emergencyWakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
-      
-      // Recording commands are more specific, check them first.
-      // They should contain 'nia' to avoid accidental triggers.
-      if (transcript.includes("nia") && (transcript.includes("recording start") || transcript.includes("recording start karo"))) {
-        startRecording();
-        toast({ title: "Recording Started", description: "Voice command recognized." });
-      } else if (transcript.includes("nia") && (transcript.includes("recording stop") || transcript.includes("recording band karo"))) {
-        stopRecording();
-        toast({ title: "Recording Stopped", description: "Voice command recognized." });
-      } else if (emergencyWakeWords.some(word => transcript.includes(word))) {
-        // Fallback to general emergency activation
-        handleActivate();
-      }
-    };
+    const recognition = recognitionRef.current;
 
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(() => {
         setPermissionGranted(true);
         if (!isEmergencyActive) {
-          startListening();
+            try {
+                recognition.start();
+            } catch(e) {
+                console.log("Recognition already started")
+            }
         }
       })
       .catch(() => {
@@ -111,7 +109,10 @@ export default function Home() {
       });
 
     return () => {
-      stopListening();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
     };
   }, [isEmergencyActive, handleActivate, toast, permissionGranted, startRecording, stopRecording]);
 

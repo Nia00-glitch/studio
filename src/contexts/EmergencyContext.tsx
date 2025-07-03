@@ -76,11 +76,15 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const startRecording = useCallback(() => {
     if (settings.enableRecording) {
       setIsRecording(true);
+      console.log("Context: Recording started");
+    } else {
+      console.log("Context: Recording is disabled in settings.");
     }
   }, [settings.enableRecording]);
 
   const stopRecording = useCallback(() => {
     setIsRecording(false);
+    console.log("Context: Recording stopped");
   }, []);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
