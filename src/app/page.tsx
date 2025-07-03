@@ -64,7 +64,10 @@ export default function Home() {
           description: "Please enable microphone access to use voice commands.",
         });
       }
-      console.error("Speech recognition error:", event.error);
+      
+      if (event.error !== 'aborted') {
+        console.error("Speech recognition error:", event.error);
+      }
       setIsListening(false);
     };
 
@@ -94,9 +97,11 @@ export default function Home() {
       });
 
     return () => {
+      // This prevents the onend handler from restarting recognition after the component unmounts.
+      recognition.onend = null;
       stopListening();
     };
-  }, [isEmergencyActive, handleActivate, toast]);
+  }, [isEmergencyActive, handleActivate, toast, permissionGranted]);
 
   if (isEmergencyActive) {
     return <EmergencyScreen />;
