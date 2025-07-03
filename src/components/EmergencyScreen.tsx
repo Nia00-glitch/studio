@@ -155,7 +155,6 @@ export default function EmergencyScreen() {
           size="lg"
           className="bg-primary-foreground/90 text-primary hover:bg-primary-foreground rounded-full text-lg px-12 py-6"
           onClick={handleDeactivate}
-          onLongPress={handleDeactivate}
         >
           <ShieldOff className="mr-2 h-6 w-6" />
           Deactivate
