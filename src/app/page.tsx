@@ -2,12 +2,23 @@
 
 import React from "react";
 import Link from "next/link";
-import { Settings, Shield, Mic, CheckCircle, WifiOff } from "lucide-react";
+import { Settings, Shield, Mic, CheckCircle, WifiOff, AlertTriangle } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
 import { Button } from "@/components/ui/button";
 import { NIAIcon } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function Home() {
   const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
@@ -54,15 +65,32 @@ export default function Home() {
           </p>
         </div>
 
-        <Button
-          onClick={handleActivate}
-          size="lg"
-          className="mt-8 gap-2 bg-primary/90 hover:bg-primary text-primary-foreground rounded-full px-8 py-6 text-lg"
-          aria-label="Manually activate emergency mode"
-        >
-          <Shield className="h-6 w-6" />
-          Manual Activation
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="lg"
+              className="mt-8 gap-2 bg-primary/90 hover:bg-primary text-primary-foreground rounded-full px-8 py-6 text-lg"
+              aria-label="Manually activate emergency mode"
+            >
+              <Shield className="h-6 w-6" />
+              Manual Activation
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to activate emergency mode?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will immediately notify your emergency contacts and activate safety protocols. Only proceed if you are in a genuine emergency.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleActivate} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                <AlertTriangle className="mr-2 h-4 w-4" /> Activate
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
 
       <footer className="absolute bottom-4 text-center text-muted-foreground text-sm">
