@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useContext, useEffect, useState, useCallback } from "react";
@@ -35,7 +36,7 @@ export default function Home() {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
-    recognition.lang = "en-IN";
+    recognition.lang = 'en-IN';
 
     let recognitionAborted = false;
     const startListening = () => {
