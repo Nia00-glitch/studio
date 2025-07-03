@@ -11,9 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, PlusCircle, Save } from "lucide-react";
+import { Trash2, PlusCircle, Save, UploadCloud } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { uploadRecordingToFirebase } from "@/lib/storage";
 
 const phoneRegex = new RegExp(
   /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
@@ -62,6 +63,28 @@ export default function SettingsClient() {
     });
     triggerEmergency();
   }
+
+  const handleTestUpload = async () => {
+    toast({ title: "Running Storage Test...", description: "Attempting to upload a test file." });
+    const testContent = "This is a test file from NIA Safety Assistant.";
+    const blob = new Blob([testContent], { type: 'text/plain' });
+    const report = await uploadRecordingToFirebase(blob);
+    
+    console.log("Firebase Storage Test Report:", JSON.stringify(report, null, 2));
+
+    if (report.status === '✅ Upload Successful') {
+      toast({
+        title: "🟢 Upload complete and verified.",
+        description: `File uploaded to: ${report.filePath}`,
+      });
+    } else {
+      toast({
+        variant: "destructive",
+        title: "🔴 Upload failed. Please check config.",
+        description: report.reason,
+      });
+    }
+  };
 
   return (
     <Form {...form}>
@@ -162,20 +185,35 @@ export default function SettingsClient() {
             />
           </CardContent>
         </Card>
-        
-        <div className="flex justify-between items-start">
-            <Card>
-                <CardHeader>
-                <CardTitle>Test Mode</CardTitle>
-                <CardDescription>Simulate an emergency to test your settings.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                <Button variant="destructive" type="button" onClick={handleTestMode}>
-                    Test Emergency Mode
-                </Button>
-                </CardContent>
-            </Card>
 
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          <Card>
+              <CardHeader>
+              <CardTitle>Test Emergency Mode</CardTitle>
+              <CardDescription>Simulate an emergency to test your settings.</CardDescription>
+              </CardHeader>
+              <CardContent>
+              <Button variant="destructive" type="button" onClick={handleTestMode}>
+                  Test Emergency
+              </Button>
+              </CardContent>
+          </Card>
+          
+          <Card>
+              <CardHeader>
+              <CardTitle>Test Firebase Storage</CardTitle>
+              <CardDescription>Verify connection by uploading a small test file.</CardDescription>
+              </CardHeader>
+              <CardContent>
+              <Button variant="outline" type="button" onClick={handleTestUpload}>
+                  <UploadCloud className="mr-2 h-4 w-4" />
+                  Test Upload
+              </Button>
+              </CardContent>
+          </Card>
+        </div>
+        
+        <div className="flex justify-end pt-4">
             <Button type="submit" size="lg">
                 <Save className="mr-2 h-4 w-4" />
                 Save All Settings
