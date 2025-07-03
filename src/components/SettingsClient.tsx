@@ -11,8 +11,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, PlusCircle, Save, UploadCloud } from "lucide-react";
+import { Trash2, PlusCircle, Save, UploadCloud, AlertTriangle } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { uploadRecordingToFirebase } from "@/lib/storage";
 
@@ -89,6 +90,18 @@ export default function SettingsClient() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Action Required: Configure Storage Rules</AlertTitle>
+          <AlertDescription>
+            For recordings to upload, you must set security rules in your Firebase project. By default, all uploads are blocked.
+            <a href="https://firebase.google.com/docs/storage/security" target="_blank" rel="noopener noreferrer" className="font-bold underline ml-1">
+              Learn how here.
+            </a>
+          </AlertDescription>
+        </Alert>
+        
         <Card>
           <CardHeader>
             <CardTitle>Emergency Contacts</CardTitle>

@@ -25,7 +25,8 @@ const VoiceListener = () => {
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     
-    recognition.lang = 'en-IN';
+    // By not setting `recognition.lang`, we allow the browser to use its default
+    // language, which provides better support for non-English phrases.
     recognition.continuous = true;
     recognition.interimResults = false;
 
