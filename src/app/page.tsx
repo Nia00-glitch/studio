@@ -10,7 +10,7 @@ import { NIAIcon } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
-  const { isEmergencyActive, activateEmergency, isOnline } = useContext(EmergencyContext);
+  const { isEmergencyActive, activateEmergency, isOnline, startRecording, stopRecording } = useContext(EmergencyContext);
   const { toast } = useToast();
   const [isListening, setIsListening] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(true);
@@ -35,14 +35,17 @@ export default function Home() {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
-    recognition.lang = "en-US";
+    recognition.lang = "en-IN";
 
+    let recognitionAborted = false;
     const startListening = () => {
+      recognitionAborted = false;
       recognition.start();
       setIsListening(true);
     };
 
     const stopListening = () => {
+      recognitionAborted = true;
       recognition.stop();
       setIsListening(false);
     }
@@ -50,7 +53,7 @@ export default function Home() {
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => {
       setIsListening(false);
-      if (permissionGranted && !isEmergencyActive) {
+      if (permissionGranted && !isEmergencyActive && !recognitionAborted) {
         setTimeout(startListening, 100);
       }
     };
@@ -73,9 +76,18 @@ export default function Home() {
 
     recognition.onresult = (event) => {
       const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-      const wakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
       
-      if (wakeWords.some(word => transcript.includes(word))) {
+      const emergencyWakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
+      const startRecordingCommand = "nia recording start karo";
+      const stopRecordingCommand = "nia recording band karo";
+      
+      if (transcript.includes(startRecordingCommand)) {
+        startRecording();
+        toast({ title: "Recording Started", description: "Voice command recognized." });
+      } else if (transcript.includes(stopRecordingCommand)) {
+        stopRecording();
+        toast({ title: "Recording Stopped", description: "Voice command recognized." });
+      } else if (emergencyWakeWords.some(word => transcript.includes(word))) {
         handleActivate();
       }
     };
@@ -97,11 +109,9 @@ export default function Home() {
       });
 
     return () => {
-      // This prevents the onend handler from restarting recognition after the component unmounts.
-      recognition.onend = null;
       stopListening();
     };
-  }, [isEmergencyActive, handleActivate, toast, permissionGranted]);
+  }, [isEmergencyActive, handleActivate, toast, permissionGranted, startRecording, stopRecording]);
 
   if (isEmergencyActive) {
     return <EmergencyScreen />;

@@ -14,6 +14,9 @@ interface EmergencyContextType {
   addContact: (contact: Omit<Contact, 'id'>) => void;
   updateContact: (contact: Contact) => void;
   deleteContact: (id: string) => void;
+  isRecording: boolean;
+  startRecording: () => void;
+  stopRecording: () => void;
 }
 
 const defaultSettings: Settings = {
@@ -32,10 +35,14 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   addContact: () => {},
   updateContact: () => {},
   deleteContact: () => {},
+  isRecording: false,
+  startRecording: () => {},
+  stopRecording: () => {},
 });
 
 export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [settings, setSettings] = useLocalStorage<Settings>('nia-settings', defaultSettings);
 
@@ -63,6 +70,17 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   const deactivateEmergency = useCallback(() => {
     setIsEmergencyActive(false);
+    setIsRecording(false); // Also stop recording when emergency is deactivated
+  }, []);
+
+  const startRecording = useCallback(() => {
+    if (settings.enableRecording) {
+      setIsRecording(true);
+    }
+  }, [settings.enableRecording]);
+
+  const stopRecording = useCallback(() => {
+    setIsRecording(false);
   }, []);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
@@ -99,6 +117,9 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     addContact,
     updateContact,
     deleteContact,
+    isRecording,
+    startRecording,
+    stopRecording,
   };
 
   return (

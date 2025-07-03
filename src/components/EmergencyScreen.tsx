@@ -7,10 +7,9 @@ import { useToast } from "@/hooks/use-toast";
 import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare } from "lucide-react";
 
 export default function EmergencyScreen() {
-  const { deactivateEmergency, settings, isOnline } = useContext(EmergencyContext);
+  const { deactivateEmergency, settings, isOnline, isRecording, startRecording, stopRecording } = useContext(EmergencyContext);
   const { toast } = useToast();
   const [status, setStatus] = useState("Activating emergency protocols...");
-  const [isRecording, setIsRecording] = useState(false);
   const [location, setLocation] = useState<GeolocationCoordinates | null>(null);
 
   useEffect(() => {
@@ -20,7 +19,9 @@ export default function EmergencyScreen() {
     }
     // Auto-start recording if enabled
     if (settings.enableRecording) {
-      handleToggleRecording();
+      startRecording();
+      setStatus("Hidden recording started automatically.");
+      toast({ title: "Recording Started", description: "Recording was started based on your settings." });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -75,12 +76,16 @@ export default function EmergencyScreen() {
       toast({ title: "Recording is disabled in settings." });
       return;
     }
-    setIsRecording(!isRecording);
-    const newStatus = !isRecording ? "Started hidden recording." : "Stopped hidden recording.";
-    setStatus(newStatus);
-    toast({ title: newStatus });
-    // In a real app, this would interface with MediaRecorder API
-    console.log(newStatus);
+
+    if (isRecording) {
+      stopRecording();
+      setStatus("Stopped hidden recording.");
+      toast({ title: "Stopped hidden recording." });
+    } else {
+      startRecording();
+      setStatus("Started hidden recording.");
+      toast({ title: "Started hidden recording." });
+    }
   };
 
   const handleAlertAuthorities = () => {
