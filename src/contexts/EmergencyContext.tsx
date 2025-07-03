@@ -2,8 +2,10 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
-import type { Settings, Contact } from '@/lib/types';
+import type { Settings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
 
 interface EmergencyContextType {
@@ -113,25 +115,35 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
       recorder.onstart = () => {
         setIsRecording(true);
         console.log("Context: MediaRecorder started");
+        toast({ title: "Recording Started", description: "Hidden recording is now active." });
       };
 
       recorder.onstop = () => {
         const blob = new Blob(mediaChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
+        
+        if (isOnline) {
+          const recordingId = uuidv4();
+          const storageRef = ref(storage, `recordings/${recordingId}.webm`);
+          toast({ title: "Uploading recording...", description: "Please wait." });
+          uploadBytes(storageRef, blob)
+            .then(() => {
+              toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
+            })
+            .catch((error) => {
+              console.error("Upload failed:", error);
+              toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording to cloud. Saved locally." });
+              saveBlobLocally(blob);
+            });
+        } else {
+            toast({ title: "Offline Mode", description: "Recording saved locally. It will be uploaded when you're back online." });
+            saveBlobLocally(blob);
+        }
         
         mediaChunksRef.current = [];
-        // Stop all tracks to turn off camera light
         stream.getTracks().forEach(track => track.stop());
         setMediaStream(null);
         setIsRecording(false);
-        console.log("Context: MediaRecorder stopped and file saved.");
+        console.log("Context: MediaRecorder stopped.");
       };
 
       recorder.start();
@@ -145,7 +157,18 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         description: 'Please enable permissions in your browser settings to use recording.',
       });
     }
-  }, [isRecording, settings.enableRecording, toast]);
+  }, [isRecording, settings.enableRecording, toast, isOnline]);
+
+  const saveBlobLocally = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+  }
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {

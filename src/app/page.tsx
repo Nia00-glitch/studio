@@ -50,7 +50,7 @@ export default function Home() {
               <span>Listening for voice commands...</span>
            </div>
           <p className="text-sm text-muted-foreground/80 mt-4">
-            Say "NIA help" or "Emergency" to activate.
+            Say "NIA help" or "NIA recording start" to activate features.
           </p>
         </div>
 
@@ -67,7 +67,7 @@ export default function Home() {
 
       <footer className="absolute bottom-4 text-center text-muted-foreground text-sm">
         <div className="flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-green-500" />
+          <CheckCircle className="w-4 h-4 text-success" />
           <span>System Normal</span>
         </div>
       </footer>
