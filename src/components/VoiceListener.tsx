@@ -1,21 +1,31 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
+import { useToast } from "@/hooks/use-toast";
 
 const VoiceListener = () => {
-  const { triggerEmergency, startRecording, stopRecording } = useEmergencyContext();
+  const { triggerEmergency, startRecording, stopRecording, isEmergencyActive } = useEmergencyContext();
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       console.error('SpeechRecognition not supported in this browser.');
+      toast({
+        variant: "destructive",
+        title: "Voice Commands Not Supported",
+        description: "Your browser does not support the Web Speech API.",
+      });
       return;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-IN'; // Better for Indian English and Hindi-English mix
+    recognitionRef.current = recognition;
+    
+    recognition.lang = 'en-IN';
     recognition.continuous = true;
     recognition.interimResults = false;
 
@@ -23,36 +33,35 @@ const VoiceListener = () => {
       const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
       console.log('Heard:', transcript);
 
-      if (
-        transcript.includes('nia') &&
-        (transcript.includes('help') || transcript.includes('bachao') || transcript.includes('emergency'))
-      ) {
+      if (!transcript.includes('nia')) return;
+
+      if (transcript.includes('help') || transcript.includes('bachao') || transcript.includes('emergency')) {
         console.log('Emergency triggered by voice');
-        triggerEmergency();
-      }
-
-      if (transcript.includes('nia recording start karo')) {
-        console.log('Starting background recording');
+        if (!isEmergencyActive) triggerEmergency();
+      } else if (transcript.includes('recording start') || transcript.includes('recording chalu karo')) {
+        console.log('Starting recording by voice');
         startRecording();
-      }
-
-      if (transcript.includes('nia recording band karo')) {
-        console.log('Stopping recording');
+      } else if (transcript.includes('recording stop') || transcript.includes('recording band karo')) {
+        console.log('Stopping recording by voice');
         stopRecording();
       }
     };
 
     recognition.onerror = (event) => {
-        if (event.error !== 'aborted') {
-            console.error('Speech recognition error:', event.error);
-        }
+      // "aborted" and "no-speech" are common non-critical errors.
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        console.error('Speech recognition error:', event.error);
+      }
     };
     
+    // Auto-restart the recognition service.
     recognition.onend = () => {
       try {
-        recognition.start();
+        if (recognitionRef.current) { // Check if it hasn't been stopped manually
+          recognitionRef.current.start();
+        }
       } catch(e) {
-        console.log("Could not restart recognition", e)
+        console.error("Could not restart speech recognition.", e)
       }
     };
 
@@ -63,17 +72,28 @@ const VoiceListener = () => {
           recognition.start();
           console.log('Voice listener started');
         } catch (e) {
-          console.log('Recognition already started');
+          // This can happen if it's already started.
+          console.log('Recognition could not be started, likely already running.');
         }
       })
       .catch((err) => {
         console.error('Microphone permission error:', err);
+        toast({
+          variant: "destructive",
+          title: "Microphone Access Denied",
+          description: "Please enable microphone permissions to use voice commands.",
+        });
       });
 
     return () => {
-      recognition.stop();
+      if (recognitionRef.current) {
+        // Explicitly stop and clear the reference to prevent onend restart
+        recognitionRef.current.onend = null; 
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
     };
-  }, [triggerEmergency, startRecording, stopRecording]);
+  }, [triggerEmergency, startRecording, stopRecording, isEmergencyActive, toast]);
 
   return null; // This is a background listener
 };

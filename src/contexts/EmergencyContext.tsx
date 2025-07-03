@@ -1,8 +1,10 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import type { Settings, Contact } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
+import { v4 as uuidv4 } from 'uuid';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
@@ -11,12 +13,11 @@ interface EmergencyContextType {
   isOnline: boolean;
   settings: Settings;
   updateSettings: (newSettings: Partial<Settings>) => void;
-  addContact: (contact: Omit<Contact, 'id'>) => void;
-  updateContact: (contact: Contact) => void;
-  deleteContact: (id: string) => void;
   isRecording: boolean;
-  startRecording: () => void;
+  startRecording: () => Promise<void>;
   stopRecording: () => void;
+  hasCameraPermission: boolean;
+  mediaStream: MediaStream | null;
 }
 
 const defaultSettings: Settings = {
@@ -32,12 +33,11 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   isOnline: true,
   settings: defaultSettings,
   updateSettings: () => {},
-  addContact: () => {},
-  updateContact: () => {},
-  deleteContact: () => {},
   isRecording: false,
-  startRecording: () => {},
+  startRecording: async () => {},
   stopRecording: () => {},
+  hasCameraPermission: false,
+  mediaStream: null,
 });
 
 export const useEmergencyContext = () => {
@@ -53,6 +53,12 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const [isRecording, setIsRecording] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [settings, setSettings] = useLocalStorage<Settings>('nia-settings', defaultSettings);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -77,46 +83,78 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   }, []);
 
   const deactivateEmergency = useCallback(() => {
-    setIsEmergencyActive(false);
-    setIsRecording(false); // Also stop recording when emergency is deactivated
-  }, []);
-
-  const startRecording = useCallback(() => {
-    if (settings.enableRecording) {
-      setIsRecording(true);
-      console.log("Context: Recording started");
-    } else {
-      console.log("Context: Recording is disabled in settings.");
+    if (isRecording) {
+      stopRecording();
     }
-  }, [settings.enableRecording]);
+    setIsEmergencyActive(false);
+  }, [isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startRecording = useCallback(async () => {
+    if (isRecording || !settings.enableRecording) {
+      if (!settings.enableRecording) console.log("Recording is disabled in settings.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setHasCameraPermission(true);
+      setMediaStream(stream);
+
+      mediaChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          mediaChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstart = () => {
+        setIsRecording(true);
+        console.log("Context: MediaRecorder started");
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(mediaChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        
+        mediaChunksRef.current = [];
+        // Stop all tracks to turn off camera light
+        stream.getTracks().forEach(track => track.stop());
+        setMediaStream(null);
+        setIsRecording(false);
+        console.log("Context: MediaRecorder stopped and file saved.");
+      };
+
+      recorder.start();
+
+    } catch (error) {
+      console.error('Error accessing camera/mic:', error);
+      setHasCameraPermission(false);
+      toast({
+        variant: 'destructive',
+        title: 'Camera/Mic Access Denied',
+        description: 'Please enable permissions in your browser settings to use recording.',
+      });
+    }
+  }, [isRecording, settings.enableRecording, toast]);
 
   const stopRecording = useCallback(() => {
-    setIsRecording(false);
-    console.log("Context: Recording stopped");
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
   }, []);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
-  };
-
-  const addContact = (contact: Omit<Contact, 'id'>) => {
-    if (settings.contacts.length >= 3) return;
-    const newContact = { ...contact, id: Date.now().toString() };
-    setSettings(prev => ({ ...prev, contacts: [...prev.contacts, newContact] }));
-  };
-
-  const updateContact = (updatedContact: Contact) => {
-    setSettings(prev => ({
-      ...prev,
-      contacts: prev.contacts.map(c => c.id === updatedContact.id ? updatedContact : c),
-    }));
-  };
-
-  const deleteContact = (id: string) => {
-    setSettings(prev => ({
-      ...prev,
-      contacts: prev.contacts.filter(c => c.id !== id),
-    }));
   };
 
   const value = {
@@ -126,12 +164,11 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     isOnline,
     settings,
     updateSettings,
-    addContact,
-    updateContact,
-    deleteContact,
     isRecording,
     startRecording,
     stopRecording,
+    hasCameraPermission,
+    mediaStream,
   };
 
   return (

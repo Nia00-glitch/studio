@@ -1,16 +1,34 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useState, useRef } from "react";
 import { EmergencyContext } from "@/contexts/EmergencyContext";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare } from "lucide-react";
+import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare, VideoOff } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function EmergencyScreen() {
-  const { deactivateEmergency, settings, isOnline, isRecording, startRecording, stopRecording } = useContext(EmergencyContext);
+  const { 
+    deactivateEmergency, 
+    settings, 
+    isOnline, 
+    isRecording, 
+    startRecording, 
+    stopRecording,
+    mediaStream,
+    hasCameraPermission
+  } = useContext(EmergencyContext);
   const { toast } = useToast();
   const [status, setStatus] = useState("Activating emergency protocols...");
   const [location, setLocation] = useState<GeolocationCoordinates | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (mediaStream && videoRef.current) {
+      videoRef.current.srcObject = mediaStream;
+    }
+  }, [mediaStream]);
+
 
   useEffect(() => {
     // Auto-send location if enabled
@@ -19,9 +37,10 @@ export default function EmergencyScreen() {
     }
     // Auto-start recording if enabled
     if (settings.enableRecording && !isRecording) {
-      startRecording();
-      setStatus("Hidden recording started automatically.");
-      toast({ title: "Recording Started", description: "Recording was started based on your settings." });
+      startRecording().then(() => {
+        setStatus("Hidden recording started automatically.");
+        toast({ title: "Recording Started", description: "Recording was started based on your settings." });
+      });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -51,14 +70,11 @@ export default function EmergencyScreen() {
         setStatus(`Location sent to ${settings.contacts.length} contact(s).`);
         toast({ title: "Location Sent!", description: "Emergency contacts have been notified." });
 
-        // Trigger SMS and WhatsApp
         settings.contacts.forEach(contact => {
-          // WhatsApp
           if (isOnline) {
             const whatsappUrl = `https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
             window.open(whatsappUrl, '_blank');
           }
-          // SMS
           const smsUrl = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
           window.location.href = smsUrl;
         });
@@ -79,8 +95,8 @@ export default function EmergencyScreen() {
 
     if (isRecording) {
       stopRecording();
-      setStatus("Stopped hidden recording.");
-      toast({ title: "Stopped hidden recording." });
+      setStatus("Stopped hidden recording. File saved.");
+      toast({ title: "Recording Stopped", description: "Your recording has been saved locally." });
     } else {
       startRecording();
       setStatus("Started hidden recording.");
@@ -91,8 +107,6 @@ export default function EmergencyScreen() {
   const handleAlertAuthorities = () => {
     setStatus("Alerting nearest authorities...");
     toast({ title: "Alerting Authorities", description: "An alert with your details is being sent to the nearest police station and hospital." });
-    // In a real app, this would use an API to find and contact them.
-    // For now, we can simulate opening the phone dialer.
     window.location.href = "tel:100";
   };
 
@@ -112,13 +126,26 @@ export default function EmergencyScreen() {
         )}
       </header>
 
-      <main className="flex flex-col items-center text-center">
-        <p className="text-2xl font-light mb-4">{status}</p>
+      <main className="flex flex-col items-center text-center w-full max-w-2xl">
+        <div className="w-full aspect-video bg-black/50 rounded-lg overflow-hidden mb-4 relative">
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            {!hasCameraPermission && (
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <Alert variant="destructive">
+                        <AlertTitle>Camera Access Required</AlertTitle>
+                        <AlertDescription>
+                        Please allow camera access to use recording features.
+                        </AlertDescription>
+                    </Alert>
+                </div>
+            )}
+        </div>
+        <p className="text-xl font-light mb-4">{status}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
             <ActionButton icon={MapPin} label="Send Location" onClick={handleSendLocation} />
             <ActionButton icon={Siren} label="Alert Authorities" onClick={handleAlertAuthorities} />
-            <ActionButton icon={isRecording ? Mic : Video} label={isRecording ? "Stop Recording" : "Start Recording"} onClick={handleToggleRecording} active={isRecording} />
-            <ActionButton icon={MessageSquare} label="Message Contacts" onClick={() => handleSendLocation()} />
+            <ActionButton icon={isRecording ? VideoOff : Video} label={isRecording ? "Stop Rec" : "Start Rec"} onClick={handleToggleRecording} active={isRecording} />
+            <ActionButton icon={MessageSquare} label="Message All" onClick={() => handleSendLocation()} />
         </div>
       </main>
 
@@ -128,11 +155,12 @@ export default function EmergencyScreen() {
           size="lg"
           className="bg-primary-foreground/90 text-primary hover:bg-primary-foreground rounded-full text-lg px-12 py-6"
           onClick={handleDeactivate}
+          onLongPress={handleDeactivate}
         >
           <ShieldOff className="mr-2 h-6 w-6" />
           Deactivate
         </Button>
-        <p className="mt-4 text-sm text-primary-foreground/80">Press and hold to deactivate emergency mode.</p>
+        <p className="mt-4 text-sm text-primary-foreground/80">Press button to deactivate emergency mode.</p>
       </footer>
     </div>
   );
@@ -143,11 +171,11 @@ const ActionButton = ({ icon: Icon, label, onClick, active = false }: { icon: Re
         <Button
             variant="outline"
             size="icon"
-            className={`h-20 w-20 md:h-24 md:w-24 rounded-full bg-primary-foreground/20 border-2 border-primary-foreground/50 hover:bg-primary-foreground/30 ${active ? 'bg-accent text-accent-foreground' : ''}`}
+            className={`h-20 w-20 md:h-24 md:w-24 rounded-full bg-primary-foreground/20 border-2 border-primary-foreground/50 hover:bg-primary-foreground/30 ${active ? 'bg-accent text-accent-foreground animate-pulse' : ''}`}
             onClick={onClick}
         >
             <Icon className="h-8 w-8 md:h-10 md:w-10" />
         </Button>
-        <span className="font-semibold text-sm md:text-base">{label}</span>
+        <span className="font-semibold text-sm md:text-base text-center">{label}</span>
     </div>
 );
