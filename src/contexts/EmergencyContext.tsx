@@ -4,9 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import type { Settings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes } from 'firebase/storage';
-import { v4 as uuidv4 } from 'uuid';
+import { saveRecordingToFirebase } from '@/lib/storage';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
@@ -122,10 +120,8 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         const blob = new Blob(mediaChunksRef.current, { type: 'video/webm' });
         
         if (isOnline) {
-          const recordingId = uuidv4();
-          const storageRef = ref(storage, `recordings/${recordingId}.webm`);
           toast({ title: "Uploading recording...", description: "Please wait." });
-          uploadBytes(storageRef, blob)
+          saveRecordingToFirebase(blob)
             .then(() => {
               toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
             })
