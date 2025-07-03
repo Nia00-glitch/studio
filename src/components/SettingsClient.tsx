@@ -93,11 +93,11 @@ export default function SettingsClient() {
 
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Action Required: Configure Storage Rules</AlertTitle>
+          <AlertTitle>Action Required: Deploy Storage Rules</AlertTitle>
           <AlertDescription>
-            For recordings to upload, you must set security rules in your Firebase project. By default, all uploads are blocked.
-            <a href="https://firebase.google.com/docs/storage/security" target="_blank" rel="noopener noreferrer" className="font-bold underline ml-1">
-              Learn how here.
+            The `storage.rules` file has been added to your project with an insecure default. You must deploy these rules to your Firebase project for uploads to work.
+            <a href="https://firebase.google.com/docs/cli/storage" target="_blank" rel="noopener noreferrer" className="font-bold underline ml-1">
+              Learn how to deploy here.
             </a>
           </AlertDescription>
         </Alert>
