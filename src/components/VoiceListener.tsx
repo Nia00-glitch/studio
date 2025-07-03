@@ -48,8 +48,10 @@ const VoiceListener = () => {
     };
 
     recognition.onerror = (event) => {
-      // "aborted" and "no-speech" are common non-critical errors.
-      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+      const ignoredErrors = ['aborted', 'no-speech', 'network'];
+      // "aborted", "no-speech", and "network" are common non-critical errors.
+      // The listener will attempt to restart automatically on these.
+      if (!ignoredErrors.includes(event.error)) {
         console.error('Speech recognition error:', event.error);
       }
     };
