@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import type { Settings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { saveRecordingToFirebase } from '@/lib/storage';
+import { uploadRecordingToFirebase } from '@/lib/storage';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
@@ -121,13 +121,12 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         
         if (isOnline) {
           toast({ title: "Uploading recording...", description: "Please wait." });
-          try {
-            await saveRecordingToFirebase(blob)
+          const report = await uploadRecordingToFirebase(blob);
+          if (report.status === '✅ Upload Successful') {
             toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
-          } catch(error) {
-              console.error("Upload failed:", error);
-              toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording to cloud. Saved locally." });
-              saveBlobLocally(blob);
+          } else {
+            toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording to cloud. Saved locally." });
+            saveBlobLocally(blob);
           }
         } else {
             toast({ title: "Offline Mode", description: "Recording saved locally. It will be uploaded when you're back online." });
