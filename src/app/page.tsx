@@ -79,16 +79,17 @@ export default function Home() {
       const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
       
       const emergencyWakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
-      const startRecordingCommand = "nia recording start karo";
-      const stopRecordingCommand = "nia recording band karo";
       
-      if (transcript.includes(startRecordingCommand)) {
+      // Recording commands are more specific, check them first.
+      // They should contain 'nia' to avoid accidental triggers.
+      if (transcript.includes("nia") && (transcript.includes("recording start") || transcript.includes("recording start karo"))) {
         startRecording();
         toast({ title: "Recording Started", description: "Voice command recognized." });
-      } else if (transcript.includes(stopRecordingCommand)) {
+      } else if (transcript.includes("nia") && (transcript.includes("recording stop") || transcript.includes("recording band karo"))) {
         stopRecording();
         toast({ title: "Recording Stopped", description: "Voice command recognized." });
       } else if (emergencyWakeWords.some(word => transcript.includes(word))) {
+        // Fallback to general emergency activation
         handleActivate();
       }
     };
