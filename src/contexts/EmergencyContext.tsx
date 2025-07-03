@@ -116,20 +116,19 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         toast({ title: "Recording Started", description: "Hidden recording is now active." });
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(mediaChunksRef.current, { type: 'video/webm' });
         
         if (isOnline) {
           toast({ title: "Uploading recording...", description: "Please wait." });
-          saveRecordingToFirebase(blob)
-            .then(() => {
-              toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
-            })
-            .catch((error) => {
+          try {
+            await saveRecordingToFirebase(blob)
+            toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
+          } catch(error) {
               console.error("Upload failed:", error);
               toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording to cloud. Saved locally." });
               saveBlobLocally(blob);
-            });
+          }
         } else {
             toast({ title: "Offline Mode", description: "Recording saved locally. It will be uploaded when you're back online." });
             saveBlobLocally(blob);
