@@ -1,17 +1,16 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { EmergencyContext } from "@/contexts/EmergencyContext";
+import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { Trash2, PlusCircle, Save } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
@@ -30,7 +29,7 @@ const settingsSchema = z.object({
 });
 
 export default function SettingsClient() {
-  const { settings, updateSettings, addContact, updateContact, deleteContact, activateEmergency } = useContext(EmergencyContext);
+  const { settings, updateSettings, addContact, updateContact, deleteContact, triggerEmergency } = useEmergencyContext();
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof settingsSchema>>({
@@ -40,7 +39,7 @@ export default function SettingsClient() {
     },
   });
 
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "contacts",
   });
@@ -58,12 +57,8 @@ export default function SettingsClient() {
     });
     // Handle deletions that might have occurred
     if (data.contacts.length < settings.contacts.length) {
-        settings.contacts.forEach(c => {
-            if (!data.contacts.find(dc => dc.name === c.name && dc.phone === c.phone)) { // simplistic check
-                 const deletedContact = settings.contacts.find(sc => !data.contacts.some(formContact => sc.id === formContact.id));
-                 if(deletedContact) deleteContact(deletedContact.id);
-            }
-        });
+        const deletedContact = settings.contacts.find(sc => !data.contacts.some(formContact => sc.id === (formContact as any).id));
+        if(deletedContact) deleteContact(deletedContact.id);
     }
 
     toast({ title: "Settings Saved", description: "Your changes have been saved successfully." });
@@ -74,7 +69,7 @@ export default function SettingsClient() {
         title: "Test Mode Activated",
         description: "Simulating emergency scenario..."
     });
-    activateEmergency();
+    triggerEmergency();
   }
 
   return (

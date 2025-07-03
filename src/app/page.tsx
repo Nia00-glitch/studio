@@ -1,120 +1,26 @@
 "use client";
 
-import { useContext, useEffect, useState, useCallback, useRef } from "react";
+import React from "react";
 import Link from "next/link";
-import { Settings, Shield, Mic, CheckCircle, AlertTriangle, WifiOff } from "lucide-react";
-import { EmergencyContext } from "@/contexts/EmergencyContext";
+import { Settings, Shield, Mic, CheckCircle, WifiOff } from "lucide-react";
+import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
 import { Button } from "@/components/ui/button";
 import { NIAIcon } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Home() {
-  const { isEmergencyActive, activateEmergency, isOnline, startRecording, stopRecording } = useContext(EmergencyContext);
+  const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
   const { toast } = useToast();
-  const [isListening, setIsListening] = useState(false);
-  const [permissionGranted, setPermissionGranted] = useState(true);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const handleActivate = useCallback(() => {
-    console.log("Emergency mode activated by command.");
+  const handleActivate = () => {
+    console.log("Emergency mode activated by button.");
     toast({
       title: "Emergency Mode Activated",
-      description: "Voice command recognized. Activating safety protocols.",
+      description: "Activating safety protocols.",
     });
-    activateEmergency();
-  }, [activateEmergency, toast]);
-
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser.");
-      setPermissionGranted(false);
-      return;
-    }
-
-    if (!recognitionRef.current) {
-        recognitionRef.current = new SpeechRecognition();
-        const recognition = recognitionRef.current;
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = 'en-IN';
-
-        recognition.onstart = () => setIsListening(true);
-        recognition.onend = () => {
-          setIsListening(false);
-          // Only restart if permission is granted and not in an emergency
-          if (permissionGranted && !isEmergencyActive && recognitionRef.current) {
-            try {
-              recognition.start();
-            } catch(e) {
-                // This can happen if start is called while it's already starting.
-                console.log("Could not restart recognition", e)
-            }
-          }
-        };
-        
-        recognition.onerror = (event) => {
-          if (event.error === 'not-allowed') {
-            setPermissionGranted(false);
-            toast({
-              variant: "destructive",
-              title: "Microphone Access Denied",
-              description: "Please enable microphone access to use voice commands.",
-            });
-          }
-          if (event.error !== 'aborted') {
-            console.error("Speech recognition error:", event.error);
-          }
-          setIsListening(false);
-        };
-
-        recognition.onresult = (event) => {
-          const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-          
-          const emergencyWakeWords = ["nia", "nia help me", "nia bachao", "emergency"];
-          
-          if (transcript.includes("nia") && (transcript.includes("recording start") || transcript.includes("recording start karo"))) {
-            startRecording();
-            toast({ title: "Recording Started", description: "Voice command recognized." });
-          } else if (transcript.includes("nia") && (transcript.includes("recording stop") || transcript.includes("recording band karo"))) {
-            stopRecording();
-            toast({ title: "Recording Stopped", description: "Voice command recognized." });
-          } else if (emergencyWakeWords.some(word => transcript.includes(word))) {
-            handleActivate();
-          }
-        };
-    }
-    
-    const recognition = recognitionRef.current;
-
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => {
-        setPermissionGranted(true);
-        if (!isEmergencyActive) {
-            try {
-                recognition.start();
-            } catch(e) {
-                console.log("Recognition already started")
-            }
-        }
-      })
-      .catch(() => {
-        setPermissionGranted(false);
-        toast({
-          variant: "destructive",
-          title: "Microphone Required",
-          description: "Please allow microphone access for voice activation.",
-        });
-      });
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-      }
-    };
-  }, [isEmergencyActive, handleActivate, toast, permissionGranted, startRecording, stopRecording]);
+    triggerEmergency();
+  };
 
   if (isEmergencyActive) {
     return <EmergencyScreen />;
@@ -134,37 +40,17 @@ export default function Home() {
       <main className="flex flex-col items-center justify-center text-center flex-grow">
         <div className="relative mb-8">
           <NIAIcon className="w-24 h-24 text-primary" />
-          {isListening && (
-            <div className="absolute inset-0 rounded-full bg-primary/20 animate-pulse -z-10"></div>
-          )}
         </div>
         <h1 className="text-4xl md:text-6xl font-bold font-headline">NIA</h1>
         <p className="text-muted-foreground mt-2 text-lg">Your Intelligent Safety Assistant</p>
         
         <div className="mt-12 text-center max-w-md mx-auto">
-          {permissionGranted ? (
-             <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                {isListening ? (
-                  <>
-                    <Mic className="h-5 w-5 text-accent animate-pulse" />
-                    <span>Listening for wake words...</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-5 w-5" />
-                    <span>Initializing microphone...</span>
-                  </>
-                )}
-             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
-                <span>Microphone access denied.</span>
-                <p className="text-sm text-muted-foreground">Voice commands are disabled. Please enable microphone permissions in your browser settings.</p>
-             </div>
-          )}
+           <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Mic className="h-5 w-5 text-accent animate-pulse" />
+              <span>Listening for voice commands...</span>
+           </div>
           <p className="text-sm text-muted-foreground/80 mt-4">
-            Say "NIA" or "Emergency" to activate.
+            Say "NIA help" or "Emergency" to activate.
           </p>
         </div>
 

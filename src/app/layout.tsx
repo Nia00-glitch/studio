@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
 import { Toaster } from '@/components/ui/toaster';
+import VoiceListener from '@/components/VoiceListener';
 
 export const metadata: Metadata = {
   title: 'NIA Safety Assistant',
@@ -24,6 +25,7 @@ export default function RootLayout({
         <EmergencyProvider>
           {children}
           <Toaster />
+          <VoiceListener />
         </EmergencyProvider>
       </body>
     </html>

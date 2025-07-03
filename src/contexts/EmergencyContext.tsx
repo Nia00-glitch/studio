@@ -1,12 +1,12 @@
 "use client";
 
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import type { Settings, Contact } from '@/lib/types';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
-  activateEmergency: () => void;
+  triggerEmergency: () => void;
   deactivateEmergency: () => void;
   isOnline: boolean;
   settings: Settings;
@@ -27,7 +27,7 @@ const defaultSettings: Settings = {
 
 export const EmergencyContext = createContext<EmergencyContextType>({
   isEmergencyActive: false,
-  activateEmergency: () => {},
+  triggerEmergency: () => {},
   deactivateEmergency: () => {},
   isOnline: true,
   settings: defaultSettings,
@@ -39,6 +39,14 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   startRecording: () => {},
   stopRecording: () => {},
 });
+
+export const useEmergencyContext = () => {
+    const context = useContext(EmergencyContext);
+    if (!context) {
+        throw new Error('useEmergencyContext must be used within an EmergencyProvider');
+    }
+    return context;
+};
 
 export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
@@ -64,7 +72,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, []);
 
-  const activateEmergency = useCallback(() => {
+  const triggerEmergency = useCallback(() => {
     setIsEmergencyActive(true);
   }, []);
 
@@ -113,7 +121,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   const value = {
     isEmergencyActive,
-    activateEmergency,
+    triggerEmergency,
     deactivateEmergency,
     isOnline,
     settings,
