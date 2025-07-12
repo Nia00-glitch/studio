@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { simpleGenerate } from '@/ai/flows/simple-flow';
 
 const VoiceListener = () => {
   const { 
@@ -43,67 +44,60 @@ const VoiceListener = () => {
     }
   };
 
-  const handleCommand = (
-    commandCallback: () => void,
+  const handleCommand = useCallback(async (
+    commandCallback: (spokenPhrase: string) => Promise<void>,
     spokenPhrase: string,
     similarityRatio: number,
     confirmationMessage: string
   ) => {
+    const action = async () => {
+        await commandCallback(spokenPhrase);
+        if (confirmation) setConfirmation(null);
+    };
+
     if (similarityRatio >= 0.8) {
-      commandCallback();
+      await action();
     } else {
       setConfirmation({
         message: `Did you say "${confirmationMessage}"?`,
-        onConfirm: () => {
-          commandCallback();
-          setConfirmation(null);
-        },
+        onConfirm: action,
       });
     }
-  };
+  }, [confirmation]);
 
-  const emergencyCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
-    const action = () => {
-      if (!isEmergencyActive) {
-        console.log('Emergency triggered by voice');
+  const emergencyCallback = useCallback(async (spokenPhrase: string) => {
+    if (!isEmergencyActive) {
+      console.log('Passing to AI:', spokenPhrase);
+      // Call the AI and wait for its decision
+      const aiResponse = await simpleGenerate(spokenPhrase);
+      console.log('AI Response:', aiResponse);
+      
+      if (aiResponse.includes('Emergency Mode Activated')) {
         speak("Emergency mode activated. Notifying contacts.");
         triggerEmergency({ silent: true });
       }
-    };
-    handleCommand(action, spokenPhrase, similarityRatio, "help");
+    }
   }, [isEmergencyActive, triggerEmergency]);
 
-  const startRecordingCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
-    const action = () => {
-      startRecording().then(() => {
-        speak("Recording started.");
-      });
-    };
-    handleCommand(action, spokenPhrase, similarityRatio, "start recording");
+
+  const startRecordingCallback = useCallback(async (spokenPhrase: string) => {
+      await startRecording();
+      speak("Recording started.");
   }, [startRecording]);
 
-  const stopRecordingCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
-    const action = () => {
+  const stopRecordingCallback = useCallback(async (spokenPhrase: string) => {
       stopRecording();
       speak("Recording stopped.");
-    };
-     handleCommand(action, spokenPhrase, similarityRatio, "stop recording");
   }, [stopRecording]);
 
-  const shareLocationCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
-    const action = () => {
+  const shareLocationCallback = useCallback(async (spokenPhrase: string) => {
       shareLocation();
       speak("Sharing your location.");
-    };
-    handleCommand(action, spokenPhrase, similarityRatio, "share location");
   }, [shareLocation]);
   
-  const deactivateEmergencyCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
-    const action = () => {
+  const deactivateEmergencyCallback = useCallback(async (spokenPhrase: string) => {
       deactivateEmergency();
       speak("Emergency mode deactivated.");
-    };
-    handleCommand(action, spokenPhrase, similarityRatio, "cancel emergency");
   }, [deactivateEmergency]);
 
   const commands = [
@@ -124,7 +118,7 @@ const VoiceListener = () => {
             'send for help',
         ],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) => 
-            emergencyCallback(spokenPhrase, similarityRatio),
+            handleCommand(emergencyCallback, spokenPhrase, similarityRatio, "help"),
         matchInterim: true,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
@@ -140,28 +134,28 @@ const VoiceListener = () => {
             'chalu karo recording',
         ],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            startRecordingCallback(spokenPhrase, similarityRatio),
+            handleCommand(startRecordingCallback, spokenPhrase, similarityRatio, "start recording"),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA stop recording', 'NIA recording stop', 'NIA recording band karo'],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            stopRecordingCallback(spokenPhrase, similarityRatio),
+            handleCommand(stopRecordingCallback, spokenPhrase, similarityRatio, "stop recording"),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA cancel', 'NIA stop emergency', 'cancel emergency', 'NIA stand down'],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            deactivateEmergencyCallback(spokenPhrase, similarityRatio),
+            handleCommand(deactivateEmergencyCallback, spokenPhrase, similarityRatio, "cancel emergency"),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
        {
         command: ['NIA share location', 'NIA location share karo'],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            shareLocationCallback(spokenPhrase, similarityRatio),
+            handleCommand(shareLocationCallback, spokenPhrase, similarityRatio, "share location"),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       }
