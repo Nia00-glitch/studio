@@ -12,7 +12,7 @@ const VoiceListener = () => {
   
   const commands = [
       {
-        command: ['nia', 'nia help', 'nia help me', 'nia bachao'],
+        command: ['nia', 'nia help', 'nia help me', 'nia bachao', 'nia emergency mode', 'nia madad karo'],
         callback: useCallback(() => {
           if (!isEmergencyActive) {
             console.log('Emergency triggered by voice');
