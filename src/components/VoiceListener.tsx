@@ -1,3 +1,4 @@
+
 "use client";
 
 import 'regenerator-runtime/runtime';
@@ -7,7 +8,7 @@ import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
 
 const VoiceListener = () => {
-  const { triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive } = useEmergencyContext();
+  const { triggerEmergency, startRecording, stopRecording, shareLocation, deactivateEmergency, isEmergencyActive } = useEmergencyContext();
   const { toast } = useToast();
   
   const emergencyCallback = useCallback(() => {
@@ -29,6 +30,10 @@ const VoiceListener = () => {
             'nia madad karo',
             'madad karo',
             'emergency',
+            'NIA alert',
+            'activate safety mode',
+            'send for help',
+            'NIA emergency',
         ],
         callback: emergencyCallback,
         matchInterim: true,
@@ -43,6 +48,7 @@ const VoiceListener = () => {
             'start recording',
             'nia record',
             'record',
+            'chalu karo recording'
         ],
         callback: startRecording,
         isFuzzyMatch: true,
@@ -51,6 +57,12 @@ const VoiceListener = () => {
       {
         command: ['nia stop recording', 'nia recording stop', 'nia recording band karo'],
         callback: stopRecording,
+        isFuzzyMatch: true,
+        fuzzyMatchingThreshold: 0.8,
+      },
+      {
+        command: ['nia cancel', 'nia stop emergency', 'cancel emergency', 'nia stand down'],
+        callback: deactivateEmergency,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       },
