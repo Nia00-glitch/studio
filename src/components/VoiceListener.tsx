@@ -45,40 +45,34 @@ const VoiceListener = () => {
   };
 
   const handleCommand = useCallback(async (
-    commandCallback: () => Promise<void>,
+    commandCallback: (spokenPhrase: string) => Promise<void>,
     spokenPhrase: string,
-    similarityRatio: number,
-    confirmationMessage: string
   ) => {
-    const action = async () => {
-        await commandCallback();
-        if (confirmation) setConfirmation(null);
-    };
+    await commandCallback(spokenPhrase);
+  }, []);
 
-    if (similarityRatio >= 0.8) {
-      await action();
-    } else {
-      setConfirmation({
-        message: `Did you say "${confirmationMessage}"?`,
-        onConfirm: action,
-      });
-    }
-  }, [confirmation]);
-
-  const emergencyCallback = useCallback((spokenPhrase: string) => async () => {
+  const emergencyCallback = useCallback(async (spokenPhrase: string) => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
-      // Call the AI and wait for its decision
-      const aiResponse = await simpleGenerate({ prompt: spokenPhrase });
-      console.log('AI Response:', aiResponse);
-      
-      speak(aiResponse.responseText);
+      try {
+        const aiResponse = await simpleGenerate({ prompt: spokenPhrase });
+        console.log('AI Response:', aiResponse);
+        
+        speak(aiResponse.responseText);
 
-      if (aiResponse.activateEmergency) {
-        triggerEmergency({ silent: true });
+        if (aiResponse.activateEmergency) {
+          triggerEmergency({ silent: true });
+        }
+      } catch (error) {
+        console.error("Error calling AI flow:", error);
+        toast({
+          variant: "destructive",
+          title: "AI Error",
+          description: "Could not connect to the AI assistant."
+        });
       }
     }
-  }, [isEmergencyActive, triggerEmergency]);
+  }, [isEmergencyActive, triggerEmergency, toast]);
 
 
   const startRecordingCallback = useCallback(async () => {
@@ -118,8 +112,8 @@ const VoiceListener = () => {
             'activate safety mode',
             'send for help',
         ],
-        callback: (command: string, spokenPhrase: string, similarityRatio: number) => 
-            handleCommand(emergencyCallback(spokenPhrase), spokenPhrase, similarityRatio, "help"),
+        callback: (command: string, spokenPhrase: string) => 
+            handleCommand(emergencyCallback, spokenPhrase),
         matchInterim: true,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
@@ -134,29 +128,29 @@ const VoiceListener = () => {
             'record',
             'chalu karo recording',
         ],
-        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            handleCommand(startRecordingCallback, spokenPhrase, similarityRatio, "start recording"),
+        callback: (command: string, spokenPhrase: string) =>
+            handleCommand(startRecordingCallback, spokenPhrase),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA stop recording', 'NIA recording stop', 'NIA recording band karo'],
-        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            handleCommand(stopRecordingCallback, spokenPhrase, similarityRatio, "stop recording"),
+        callback: (command: string, spokenPhrase: string) =>
+            handleCommand(stopRecordingCallback, spokenPhrase),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA cancel', 'NIA stop emergency', 'cancel emergency', 'NIA stand down'],
-        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            handleCommand(deactivateEmergencyCallback, spokenPhrase, similarityRatio, "cancel emergency"),
+        callback: (command: string, spokenPhrase: string) =>
+            handleCommand(deactivateEmergencyCallback, spokenPhrase),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
        {
         command: ['NIA share location', 'NIA location share karo'],
-        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
-            handleCommand(shareLocationCallback, spokenPhrase, similarityRatio, "share location"),
+        callback: (command: string, spokenPhrase: string) =>
+            handleCommand(shareLocationCallback, spokenPhrase),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       }
