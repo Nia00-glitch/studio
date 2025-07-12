@@ -1,5 +1,6 @@
 "use client";
 
+import 'regenerator-runtime/runtime';
 import React, { useEffect, useCallback } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
