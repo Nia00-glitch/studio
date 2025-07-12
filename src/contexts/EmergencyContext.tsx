@@ -55,6 +55,22 @@ export const useEmergencyContext = () => {
     return context;
 };
 
+// Helper to find a supported mimeType
+const getSupportedMimeType = () => {
+    const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/mp4;codecs=avc1',
+        'video/webm',
+    ];
+    for (const mimeType of mimeTypes) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
+            return mimeType;
+        }
+    }
+    return 'video/webm'; // Fallback
+};
+
 export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -93,7 +109,8 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
       document.body.appendChild(a);
       a.style.display = 'none';
       a.href = url;
-      a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
+      const fileExtension = blob.type.split('/')[1].split(';')[0];
+      a.download = `NIA-emergency-recording-${new Date().toISOString()}.${fileExtension}`;
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
@@ -124,7 +141,8 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
       setMediaStream(stream);
 
       mediaChunksRef.current = [];
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      const mimeType = getSupportedMimeType();
+      const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -135,14 +153,14 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
       recorder.onstart = () => {
         setIsRecording(true);
-        console.log("Context: MediaRecorder started");
+        console.log(`Context: MediaRecorder started with mimeType: ${mimeType}`);
         if (!isEmergencyActive) {
             toast({ title: "Recording Started", description: "Hidden recording is now active." });
         }
       };
 
       recorder.onstop = async () => {
-        const blob = new Blob(mediaChunksRef.current, { type: 'video/webm' });
+        const blob = new Blob(mediaChunksRef.current, { type: mimeType });
         
         if (isOnline) {
           toast({ title: "Uploading recording...", description: "Please wait." });

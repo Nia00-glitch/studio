@@ -1,3 +1,4 @@
+
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes } from 'firebase/storage';
 
@@ -5,7 +6,8 @@ import { ref, uploadBytes } from 'firebase/storage';
 export const uploadRecordingToFirebase = async (blob: Blob) => {
   try {
     const timestamp = new Date().toISOString();
-    const filename = `recordings/rec_${timestamp}.webm`;
+    const fileExtension = blob.type.split('/')[1].split(';')[0] || 'webm';
+    const filename = `recordings/rec_${timestamp}.${fileExtension}`;
     const fileRef = ref(storage, filename);
 
     // 🔼 Upload the blob to Firebase Storage
