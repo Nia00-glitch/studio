@@ -17,7 +17,7 @@ const simplePrompt = ai.definePrompt(
     name: 'simplePrompt',
     input: { schema: SimpleInputSchema },
     output: { schema: SimpleOutputSchema },
-    prompt: `You are a helpful assistant. Respond to the following prompt: {{{prompt}}}`,
+    prompt: `If user says 'NIA help karo', 'Madad karo', 'Emergency' or 'Help me', trigger emergency mode, start hidden video recording, and share live location via WhatsApp and SMS. Respond with: 'Emergency Mode Activated'.`,
   },
 );
 
