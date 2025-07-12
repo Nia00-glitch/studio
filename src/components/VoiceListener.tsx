@@ -69,11 +69,12 @@ const VoiceListener = () => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
       // Call the AI and wait for its decision
-      const aiResponse = await simpleGenerate(spokenPhrase);
+      const aiResponse = await simpleGenerate({ prompt: spokenPhrase });
       console.log('AI Response:', aiResponse);
       
-      if (aiResponse.includes('Emergency Mode Activated')) {
-        speak("Emergency mode activated. Notifying contacts.");
+      speak(aiResponse.responseText);
+
+      if (aiResponse.activateEmergency) {
         triggerEmergency({ silent: true });
       }
     }
