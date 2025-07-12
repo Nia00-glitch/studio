@@ -11,12 +11,47 @@ const VoiceListener = () => {
   const { triggerEmergency, startRecording, stopRecording, shareLocation, deactivateEmergency, isEmergencyActive } = useEmergencyContext();
   const { toast } = useToast();
   
+  const speak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      // You can configure voice, rate, pitch etc. here if needed
+      // utterance.lang = 'en-IN';
+      window.speechSynthesis.speak(utterance);
+    } else {
+      console.warn("Browser does not support speech synthesis.");
+      // The individual actions already trigger toasts, so no extra fallback is needed here.
+    }
+  };
+
   const emergencyCallback = useCallback(() => {
     if (!isEmergencyActive) {
       console.log('Emergency triggered by voice');
+      speak("Emergency mode activated. Notifying contacts.");
       triggerEmergency({ silent: true });
     }
   }, [isEmergencyActive, triggerEmergency]);
+
+  const startRecordingCallback = useCallback(() => {
+    startRecording().then(() => {
+      // The toast is handled in the context, we just add speech here.
+      speak("Recording started.");
+    });
+  }, [startRecording]);
+
+  const stopRecordingCallback = useCallback(() => {
+    stopRecording();
+    speak("Recording stopped.");
+  }, [stopRecording]);
+
+  const shareLocationCallback = useCallback(() => {
+    shareLocation();
+    speak("Sharing your location.");
+  }, [shareLocation]);
+  
+  const deactivateEmergencyCallback = useCallback(() => {
+    deactivateEmergency();
+    speak("Emergency mode deactivated.");
+  }, [deactivateEmergency]);
 
   const commands = [
       {
@@ -50,25 +85,25 @@ const VoiceListener = () => {
             'record',
             'chalu karo recording'
         ],
-        callback: startRecording,
+        callback: startRecordingCallback,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       },
       {
         command: ['nia stop recording', 'nia recording stop', 'nia recording band karo'],
-        callback: stopRecording,
+        callback: stopRecordingCallback,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       },
       {
         command: ['nia cancel', 'nia stop emergency', 'cancel emergency', 'nia stand down'],
-        callback: deactivateEmergency,
+        callback: deactivateEmergencyCallback,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       },
        {
         command: ['nia share location', 'nia location share karo'],
-        callback: shareLocation,
+        callback: shareLocationCallback,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       }
