@@ -3,7 +3,6 @@
 import { useContext, useEffect, useState, useRef } from "react";
 import { EmergencyContext } from "@/contexts/EmergencyContext";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare, VideoOff } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -16,11 +15,10 @@ export default function EmergencyScreen() {
     startRecording, 
     stopRecording,
     mediaStream,
-    hasCameraPermission
+    hasCameraPermission,
+    shareLocation,
   } = useContext(EmergencyContext);
-  const { toast } = useToast();
   const [status, setStatus] = useState("Activating emergency protocols...");
-  const [location, setLocation] = useState<GeolocationCoordinates | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -31,82 +29,36 @@ export default function EmergencyScreen() {
 
 
   useEffect(() => {
-    // Auto-send location if enabled
+    // Auto-perform actions based on settings when emergency mode activates
     if (settings.autoSendLocation) {
-      handleSendLocation();
+      setStatus("Automatically sending location...");
+      shareLocation();
     }
-    // Auto-start recording if enabled
     if (settings.enableRecording && !isRecording) {
-      startRecording().then(() => {
-        setStatus("Hidden recording started automatically.");
-        toast({ title: "Recording Started", description: "Recording was started based on your settings." });
-      });
+      setStatus("Starting hidden recording...");
+      startRecording();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDeactivate = () => {
-    toast({
-      title: "Emergency Mode Deactivated",
-      description: "You have manually ended the emergency mode.",
-    });
-    deactivateEmergency();
-  };
-  
-  const handleSendLocation = () => {
-    setStatus("Getting your location...");
-    if (!navigator.geolocation) {
-      setStatus("Geolocation is not supported by your browser.");
-      toast({ variant: "destructive", title: "Could not get location" });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation(position.coords);
-        const { latitude, longitude } = position.coords;
-        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const message = `🚨 This is an emergency. I’m in danger. My location: ${mapsLink}`;
-        
-        setStatus(`Location sent to ${settings.contacts.length} contact(s).`);
-        toast({ title: "Location Sent!", description: "Emergency contacts have been notified." });
-
-        settings.contacts.forEach(contact => {
-          if (isOnline) {
-            const whatsappUrl = `https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-            window.open(whatsappUrl, '_blank');
-          }
-          const smsUrl = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
-          window.location.href = smsUrl;
-        });
-
-      },
-      () => {
-        setStatus("Unable to retrieve your location.");
-        toast({ variant: "destructive", title: "Location access denied" });
-      }
-    );
-  };
-
   const handleToggleRecording = () => {
     if (!settings.enableRecording) {
-      toast({ title: "Recording is disabled in settings." });
+      setStatus("Recording is disabled in settings.");
       return;
     }
 
     if (isRecording) {
       stopRecording();
       setStatus("Stopped hidden recording. File saved.");
-      toast({ title: "Recording Stopped", description: "Your recording has been saved locally." });
     } else {
       startRecording();
       setStatus("Started hidden recording.");
-      toast({ title: "Started hidden recording." });
     }
   };
 
   const handleAlertAuthorities = () => {
     setStatus("Alerting nearest authorities...");
-    toast({ title: "Alerting Authorities", description: "An alert with your details is being sent to the nearest police station and hospital." });
+    // This is a simulation; in a real app, this would call a backend service.
+    // For now, it dials a generic emergency number.
     window.location.href = "tel:100";
   };
 
@@ -142,10 +94,10 @@ export default function EmergencyScreen() {
         </div>
         <p className="text-xl font-light mb-4">{status}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-            <ActionButton icon={MapPin} label="Send Location" onClick={handleSendLocation} />
+            <ActionButton icon={MapPin} label="Send Location" onClick={shareLocation} />
             <ActionButton icon={Siren} label="Alert Authorities" onClick={handleAlertAuthorities} />
             <ActionButton icon={isRecording ? VideoOff : Video} label={isRecording ? "Stop Rec" : "Start Rec"} onClick={handleToggleRecording} active={isRecording} />
-            <ActionButton icon={MessageSquare} label="Message All" onClick={() => handleSendLocation()} />
+            <ActionButton icon={MessageSquare} label="Message All" onClick={shareLocation} />
         </div>
       </main>
 
@@ -154,7 +106,7 @@ export default function EmergencyScreen() {
           variant="secondary"
           size="lg"
           className="bg-primary-foreground/90 text-primary hover:bg-primary-foreground rounded-full text-lg px-12 py-6"
-          onClick={handleDeactivate}
+          onClick={deactivateEmergency}
         >
           <ShieldOff className="mr-2 h-6 w-6" />
           Deactivate

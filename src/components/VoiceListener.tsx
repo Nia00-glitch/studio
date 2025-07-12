@@ -5,7 +5,7 @@ import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
 
 const VoiceListener = () => {
-  const { triggerEmergency, startRecording, stopRecording, isEmergencyActive } = useEmergencyContext();
+  const { triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive } = useEmergencyContext();
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
 
@@ -14,10 +14,12 @@ const VoiceListener = () => {
 
     if (!SpeechRecognition) {
       console.error('SpeechRecognition not supported in this browser.');
+      // Fallback to manual button is implicit as voice commands won't work.
+      // We can notify the user that voice commands are unavailable.
       toast({
         variant: "destructive",
         title: "Voice Commands Not Supported",
-        description: "Your browser does not support the Web Speech API.",
+        description: "Your browser does not support the Web Speech API. Please use manual controls.",
       });
       return;
     }
@@ -25,8 +27,7 @@ const VoiceListener = () => {
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     
-    // By not setting `recognition.lang`, we allow the browser to use its default
-    // language, which provides better support for non-English phrases.
+    // Let browser detect language for better flexibility with Hindi/English
     recognition.continuous = true;
     recognition.interimResults = false;
 
@@ -34,30 +35,36 @@ const VoiceListener = () => {
       const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
       console.log('Heard:', transcript);
 
-      if (!transcript.includes('nia')) return;
+      // Only process commands that start with "nia"
+      if (!transcript.startsWith('nia')) return;
 
-      if (transcript.includes('help') || transcript.includes('bachao') || transcript.includes('emergency')) {
-        console.log('Emergency triggered by voice');
-        if (!isEmergencyActive) triggerEmergency();
-      } else if (transcript.includes('recording start') || transcript.includes('recording chalu karo')) {
+      if (transcript.includes('help') || transcript.includes('bachao') || transcript === 'nia') {
+        if (!isEmergencyActive) {
+            console.log('Emergency triggered by voice');
+            triggerEmergency({ silent: true }); // Activate silently
+        }
+      } else if (transcript.includes('start recording') || transcript.includes('recording chalu karo')) {
         console.log('Starting recording by voice');
         startRecording();
-      } else if (transcript.includes('recording stop') || transcript.includes('recording band karo')) {
+      } else if (transcript.includes('stop recording') || transcript.includes('recording band karo')) {
         console.log('Stopping recording by voice');
         stopRecording();
+      } else if (transcript.includes('share location')) {
+        console.log('Sharing location by voice');
+        shareLocation();
       }
     };
 
     recognition.onerror = (event) => {
       const ignoredErrors = ['aborted', 'no-speech', 'network'];
-      // "aborted", "no-speech", and "network" are common non-critical errors.
-      // The listener will attempt to restart automatically on these.
       if (!ignoredErrors.includes(event.error)) {
         console.error('Speech recognition error:', event.error);
+        // On critical errors like 'not-allowed', the listener will stop.
+        // The user will see a permission prompt or will have to use manual controls.
       }
     };
     
-    // Auto-restart the recognition service.
+    // Auto-restart the recognition service on end.
     recognition.onend = () => {
       try {
         if (recognitionRef.current) { // Check if it hasn't been stopped manually
@@ -68,6 +75,7 @@ const VoiceListener = () => {
       }
     };
 
+    // Prompt for microphone permission on start
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then(() => {
@@ -75,7 +83,6 @@ const VoiceListener = () => {
           recognition.start();
           console.log('Voice listener started');
         } catch (e) {
-          // This can happen if it's already started.
           console.log('Recognition could not be started, likely already running.');
         }
       })
@@ -96,9 +103,9 @@ const VoiceListener = () => {
         recognitionRef.current = null;
       }
     };
-  }, [triggerEmergency, startRecording, stopRecording, isEmergencyActive, toast]);
+  }, [triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive, toast]);
 
-  return null; // This is a background listener
+  return null; // This is a background component and does not render anything.
 };
 
 export default VoiceListener;

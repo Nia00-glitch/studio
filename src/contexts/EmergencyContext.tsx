@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
@@ -8,7 +9,7 @@ import { uploadRecordingToFirebase } from '@/lib/storage';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
-  triggerEmergency: () => void;
+  triggerEmergency: (options?: { silent: boolean }) => void;
   deactivateEmergency: () => void;
   isOnline: boolean;
   settings: Settings;
@@ -18,6 +19,7 @@ interface EmergencyContextType {
   stopRecording: () => void;
   hasCameraPermission: boolean;
   mediaStream: MediaStream | null;
+  shareLocation: () => void;
 }
 
 const defaultSettings: Settings = {
@@ -38,6 +40,7 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   stopRecording: () => {},
   hasCameraPermission: false,
   mediaStream: null,
+  shareLocation: () => {},
 });
 
 export const useEmergencyContext = () => {
@@ -78,20 +81,35 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, []);
 
-  const triggerEmergency = useCallback(() => {
-    setIsEmergencyActive(true);
-  }, []);
-
-  const deactivateEmergency = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
+  const saveBlobLocally = (blob: Blob) => {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      document.body.appendChild(a);
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (e) {
+      console.error("Failed to save blob locally", e);
+      toast({ variant: 'destructive', title: 'Local Save Failed', description: 'Could not save the file automatically.' });
     }
-    setIsEmergencyActive(false);
-  }, [isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
 
   const startRecording = useCallback(async () => {
     if (isRecording || !settings.enableRecording) {
-      if (!settings.enableRecording) console.log("Recording is disabled in settings.");
+      if (!settings.enableRecording) {
+        console.log("Recording is disabled in settings.");
+        toast({ title: "Recording is disabled in settings." });
+      }
       return;
     }
 
@@ -101,7 +119,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
       setMediaStream(stream);
 
       mediaChunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -113,7 +131,9 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
       recorder.onstart = () => {
         setIsRecording(true);
         console.log("Context: MediaRecorder started");
-        toast({ title: "Recording Started", description: "Hidden recording is now active." });
+        if (!isEmergencyActive) {
+            toast({ title: "Recording Started", description: "Hidden recording is now active." });
+        }
       };
 
       recorder.onstop = async () => {
@@ -125,11 +145,11 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
           if (report.status === '✅ Upload Successful') {
             toast({ title: "Upload Complete", description: "Your recording has been securely saved." });
           } else {
-            toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording to cloud. Saved locally." });
+            toast({ variant: "destructive", title: "Upload Failed", description: "Could not save to cloud. Saved locally." });
             saveBlobLocally(blob);
           }
         } else {
-            toast({ title: "Offline Mode", description: "Recording saved locally. It will be uploaded when you're back online." });
+            toast({ title: "Offline Mode", description: "Recording saved locally. Will upload when online." });
             saveBlobLocally(blob);
         }
         
@@ -151,24 +171,58 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         description: 'Please enable permissions in your browser settings to use recording.',
       });
     }
-  }, [isRecording, settings.enableRecording, toast, isOnline]);
+  }, [isRecording, settings.enableRecording, toast, isOnline, isEmergencyActive]);
 
-  const saveBlobLocally = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `NIA-emergency-recording-${new Date().toISOString()}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    a.remove();
-  }
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+  const triggerEmergency = useCallback((options?: { silent: boolean }) => {
+    if (!options?.silent) {
+        toast({
+            title: "Emergency Mode Activated",
+            description: "Activating safety protocols.",
+        });
     }
-  }, []);
+    setIsEmergencyActive(true);
+  }, [toast]);
+
+  const deactivateEmergency = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    }
+    toast({
+      title: "Emergency Mode Deactivated",
+      description: "You have manually ended the emergency mode.",
+    });
+    setIsEmergencyActive(false);
+  }, [isRecording, stopRecording, toast]);
+
+  const shareLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast({ variant: "destructive", title: "Geolocation is not supported by your browser." });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        const message = `🚨 This is an emergency. I’m in danger. My location: ${mapsLink}`;
+        
+        toast({ title: "Location Sharing Ready", description: "Opening messaging apps..." });
+
+        settings.contacts.forEach(contact => {
+          if (isOnline) {
+            const whatsappUrl = `https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+          }
+          const smsUrl = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
+          // This will not work in most desktop browsers but is standard for mobile.
+          window.location.href = smsUrl;
+        });
+      },
+      () => {
+        toast({ variant: "destructive", title: "Location access denied" });
+      }
+    );
+  }, [settings.contacts, isOnline, toast]);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -186,6 +240,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     stopRecording,
     hasCameraPermission,
     mediaStream,
+    shareLocation
   };
 
   return (
