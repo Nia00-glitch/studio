@@ -2,10 +2,20 @@
 "use client";
 
 import 'regenerator-runtime/runtime';
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const VoiceListener = () => {
   const { 
@@ -18,6 +28,11 @@ const VoiceListener = () => {
     setIsListening
   } = useEmergencyContext();
   const { toast } = useToast();
+
+  const [confirmation, setConfirmation] = useState<{
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -28,33 +43,67 @@ const VoiceListener = () => {
     }
   };
 
-  const emergencyCallback = useCallback(() => {
-    if (!isEmergencyActive) {
-      console.log('Emergency triggered by voice');
-      speak("Emergency mode activated. Notifying contacts.");
-      triggerEmergency({ silent: true });
+  const handleCommand = (
+    commandCallback: () => void,
+    spokenPhrase: string,
+    similarityRatio: number,
+    confirmationMessage: string
+  ) => {
+    if (similarityRatio >= 0.8) {
+      commandCallback();
+    } else {
+      setConfirmation({
+        message: `Did you say "${confirmationMessage}"?`,
+        onConfirm: () => {
+          commandCallback();
+          setConfirmation(null);
+        },
+      });
     }
+  };
+
+  const emergencyCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
+    const action = () => {
+      if (!isEmergencyActive) {
+        console.log('Emergency triggered by voice');
+        speak("Emergency mode activated. Notifying contacts.");
+        triggerEmergency({ silent: true });
+      }
+    };
+    handleCommand(action, spokenPhrase, similarityRatio, "help");
   }, [isEmergencyActive, triggerEmergency]);
 
-  const startRecordingCallback = useCallback(() => {
-    startRecording().then(() => {
-      speak("Recording started.");
-    });
+  const startRecordingCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
+    const action = () => {
+      startRecording().then(() => {
+        speak("Recording started.");
+      });
+    };
+    handleCommand(action, spokenPhrase, similarityRatio, "start recording");
   }, [startRecording]);
 
-  const stopRecordingCallback = useCallback(() => {
-    stopRecording();
-    speak("Recording stopped.");
+  const stopRecordingCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
+    const action = () => {
+      stopRecording();
+      speak("Recording stopped.");
+    };
+     handleCommand(action, spokenPhrase, similarityRatio, "stop recording");
   }, [stopRecording]);
 
-  const shareLocationCallback = useCallback(() => {
-    shareLocation();
-    speak("Sharing your location.");
+  const shareLocationCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
+    const action = () => {
+      shareLocation();
+      speak("Sharing your location.");
+    };
+    handleCommand(action, spokenPhrase, similarityRatio, "share location");
   }, [shareLocation]);
   
-  const deactivateEmergencyCallback = useCallback(() => {
-    deactivateEmergency();
-    speak("Emergency mode deactivated.");
+  const deactivateEmergencyCallback = useCallback((spokenPhrase: string, similarityRatio: number) => {
+    const action = () => {
+      deactivateEmergency();
+      speak("Emergency mode deactivated.");
+    };
+    handleCommand(action, spokenPhrase, similarityRatio, "cancel emergency");
   }, [deactivateEmergency]);
 
   const commands = [
@@ -74,10 +123,11 @@ const VoiceListener = () => {
             'activate safety mode',
             'send for help',
         ],
-        callback: emergencyCallback,
+        callback: (command: string, spokenPhrase: string, similarityRatio: number) => 
+            emergencyCallback(spokenPhrase, similarityRatio),
         matchInterim: true,
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8,
+        fuzzyMatchingThreshold: 0.7,
       },
       {
         command: [
@@ -89,27 +139,31 @@ const VoiceListener = () => {
             'record',
             'chalu karo recording',
         ],
-        callback: startRecordingCallback,
+        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
+            startRecordingCallback(spokenPhrase, similarityRatio),
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8,
+        fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA stop recording', 'NIA recording stop', 'NIA recording band karo'],
-        callback: stopRecordingCallback,
+        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
+            stopRecordingCallback(spokenPhrase, similarityRatio),
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8,
+        fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA cancel', 'NIA stop emergency', 'cancel emergency', 'NIA stand down'],
-        callback: deactivateEmergencyCallback,
+        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
+            deactivateEmergencyCallback(spokenPhrase, similarityRatio),
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8,
+        fuzzyMatchingThreshold: 0.7,
       },
        {
         command: ['NIA share location', 'NIA location share karo'],
-        callback: shareLocationCallback,
+        callback: (command: string, spokenPhrase: string, similarityRatio: number) =>
+            shareLocationCallback(spokenPhrase, similarityRatio),
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8,
+        fuzzyMatchingThreshold: 0.7,
       }
     ];
 
@@ -118,7 +172,7 @@ const VoiceListener = () => {
     listening,
     browserSupportsSpeechRecognition,
     isMicrophoneAvailable,
-  } = useSpeechRecognition({ commands, transcribing: false });
+  } = useSpeechRecognition({ commands });
 
   useEffect(() => {
       setIsListening(listening);
@@ -169,7 +223,31 @@ const VoiceListener = () => {
       }
   }, [transcript])
 
-  return null;
+  const handleCancel = () => {
+    setConfirmation(null);
+  };
+
+
+  return (
+    <>
+      {confirmation && (
+        <AlertDialog open={!!confirmation} onOpenChange={(open) => !open && handleCancel()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Action</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmation.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleCancel}>No, Ignore</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmation.onConfirm}>Yes, Proceed</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
+  );
 };
 
 export default VoiceListener;
