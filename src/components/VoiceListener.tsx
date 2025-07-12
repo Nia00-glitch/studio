@@ -45,13 +45,13 @@ const VoiceListener = () => {
   };
 
   const handleCommand = useCallback(async (
-    commandCallback: (spokenPhrase: string) => Promise<void>,
+    commandCallback: () => Promise<void>,
     spokenPhrase: string,
     similarityRatio: number,
     confirmationMessage: string
   ) => {
     const action = async () => {
-        await commandCallback(spokenPhrase);
+        await commandCallback();
         if (confirmation) setConfirmation(null);
     };
 
@@ -65,7 +65,7 @@ const VoiceListener = () => {
     }
   }, [confirmation]);
 
-  const emergencyCallback = useCallback(async (spokenPhrase: string) => {
+  const emergencyCallback = useCallback((spokenPhrase: string) => async () => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
       // Call the AI and wait for its decision
@@ -81,22 +81,22 @@ const VoiceListener = () => {
   }, [isEmergencyActive, triggerEmergency]);
 
 
-  const startRecordingCallback = useCallback(async (spokenPhrase: string) => {
+  const startRecordingCallback = useCallback(async () => {
       await startRecording();
       speak("Recording started.");
   }, [startRecording]);
 
-  const stopRecordingCallback = useCallback(async (spokenPhrase: string) => {
+  const stopRecordingCallback = useCallback(async () => {
       stopRecording();
       speak("Recording stopped.");
   }, [stopRecording]);
 
-  const shareLocationCallback = useCallback(async (spokenPhrase: string) => {
+  const shareLocationCallback = useCallback(async () => {
       shareLocation();
       speak("Sharing your location.");
   }, [shareLocation]);
   
-  const deactivateEmergencyCallback = useCallback(async (spokenPhrase: string) => {
+  const deactivateEmergencyCallback = useCallback(async () => {
       deactivateEmergency();
       speak("Emergency mode deactivated.");
   }, [deactivateEmergency]);
@@ -119,7 +119,7 @@ const VoiceListener = () => {
             'send for help',
         ],
         callback: (command: string, spokenPhrase: string, similarityRatio: number) => 
-            handleCommand(emergencyCallback, spokenPhrase, similarityRatio, "help"),
+            handleCommand(emergencyCallback(spokenPhrase), spokenPhrase, similarityRatio, "help"),
         matchInterim: true,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
