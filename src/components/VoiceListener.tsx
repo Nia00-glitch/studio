@@ -10,21 +10,40 @@ const VoiceListener = () => {
   const { triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive } = useEmergencyContext();
   const { toast } = useToast();
   
+  const emergencyCallback = useCallback(() => {
+    if (!isEmergencyActive) {
+      console.log('Emergency triggered by voice');
+      triggerEmergency({ silent: true });
+    }
+  }, [isEmergencyActive, triggerEmergency]);
+
   const commands = [
       {
-        command: ['nia', 'nia help', 'nia help me', 'nia bachao', 'nia emergency mode', 'nia madad karo'],
-        callback: useCallback(() => {
-          if (!isEmergencyActive) {
-            console.log('Emergency triggered by voice');
-            triggerEmergency({ silent: true });
-          }
-        }, [isEmergencyActive, triggerEmergency]),
+        command: [
+            'nia', 
+            'nia help', 
+            'nia help me', 
+            'help me',
+            'nia bachao', 
+            'nia emergency mode', 
+            'nia madad karo',
+            'madad karo',
+            'emergency',
+        ],
+        callback: emergencyCallback,
         matchInterim: true,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
       },
       {
-        command: ['nia start recording', 'nia recording start', 'nia recording chalu karo'],
+        command: [
+            'nia start recording', 
+            'nia recording start',
+            'nia recording chalu karo',
+            'start recording',
+            'nia record',
+            'record',
+        ],
         callback: startRecording,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.8,
