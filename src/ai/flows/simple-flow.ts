@@ -4,13 +4,7 @@
  * @fileOverview A simple Genkit flow for text generation.
  */
 import { ai } from '@/ai/genkit';
-import { z } from 'zod';
-
-export const SimpleInputSchema = z.string();
-export type SimpleInput = z.infer<typeof SimpleInputSchema>;
-
-export const SimpleOutputSchema = z.string();
-export type SimpleOutput = z.infer<typeof SimpleOutputSchema>;
+import { SimpleInputSchema, SimpleOutputSchema, type SimpleInput, type SimpleOutput } from '@/lib/types';
 
 const simplePrompt = ai.definePrompt(
   {
