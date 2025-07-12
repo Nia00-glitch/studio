@@ -1,109 +1,100 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useCallback } from 'react';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
 
 const VoiceListener = () => {
   const { triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive } = useEmergencyContext();
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
+  
+  const commands = [
+      {
+        command: ['nia', 'nia help', 'nia help me', 'nia bachao'],
+        callback: useCallback(() => {
+          if (!isEmergencyActive) {
+            console.log('Emergency triggered by voice');
+            triggerEmergency({ silent: true });
+          }
+        }, [isEmergencyActive, triggerEmergency]),
+        matchInterim: true,
+        isFuzzyMatch: true,
+        fuzzyMatchingThreshold: 0.8,
+      },
+      {
+        command: ['nia start recording', 'nia recording start', 'nia recording chalu karo'],
+        callback: startRecording,
+        isFuzzyMatch: true,
+        fuzzyMatchingThreshold: 0.8,
+      },
+      {
+        command: ['nia stop recording', 'nia recording stop', 'nia recording band karo'],
+        callback: stopRecording,
+        isFuzzyMatch: true,
+        fuzzyMatchingThreshold: 0.8,
+      },
+       {
+        command: ['nia share location', 'nia location share karo'],
+        callback: shareLocation,
+        isFuzzyMatch: true,
+        fuzzyMatchingThreshold: 0.8,
+      }
+    ];
+
+  const {
+    transcript,
+    listening,
+    browserSupportsSpeechRecognition,
+    isMicrophoneAvailable,
+  } = useSpeechRecognition({ commands, transcribing: false });
+
 
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      console.error('SpeechRecognition not supported in this browser.');
-      // Fallback to manual button is implicit as voice commands won't work.
-      // We can notify the user that voice commands are unavailable.
+    if (!browserSupportsSpeechRecognition) {
       toast({
         variant: "destructive",
         title: "Voice Commands Not Supported",
-        description: "Your browser does not support the Web Speech API. Please use manual controls.",
+        description: "Your browser does not support the Web Speech API.",
       });
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-    
-    // Let browser detect language for better flexibility with Hindi/English
-    recognition.continuous = true;
-    recognition.interimResults = false;
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-      console.log('Heard:', transcript);
-
-      // Only process commands that start with "nia"
-      if (!transcript.startsWith('nia')) return;
-
-      if (transcript.includes('help') || transcript.includes('bachao') || transcript === 'nia') {
-        if (!isEmergencyActive) {
-            console.log('Emergency triggered by voice');
-            triggerEmergency({ silent: true }); // Activate silently
-        }
-      } else if (transcript.includes('start recording') || transcript.includes('recording chalu karo')) {
-        console.log('Starting recording by voice');
-        startRecording();
-      } else if (transcript.includes('stop recording') || transcript.includes('recording band karo')) {
-        console.log('Stopping recording by voice');
-        stopRecording();
-      } else if (transcript.includes('share location')) {
-        console.log('Sharing location by voice');
-        shareLocation();
-      }
-    };
-
-    recognition.onerror = (event) => {
-      const ignoredErrors = ['aborted', 'no-speech', 'network'];
-      if (!ignoredErrors.includes(event.error)) {
-        console.error('Speech recognition error:', event.error);
-        // On critical errors like 'not-allowed', the listener will stop.
-        // The user will see a permission prompt or will have to use manual controls.
-      }
-    };
-    
-    // Auto-restart the recognition service on end.
-    recognition.onend = () => {
-      try {
-        if (recognitionRef.current) { // Check if it hasn't been stopped manually
-          recognitionRef.current.start();
-        }
-      } catch(e) {
-        console.error("Could not restart speech recognition.", e)
-      }
-    };
-
-    // Prompt for microphone permission on start
-    navigator.mediaDevices
-      .getUserMedia({ audio: true })
-      .then(() => {
-        try {
-          recognition.start();
-          console.log('Voice listener started');
-        } catch (e) {
-          console.log('Recognition could not be started, likely already running.');
-        }
-      })
-      .catch((err) => {
-        console.error('Microphone permission error:', err);
+    if (!isMicrophoneAvailable) {
         toast({
-          variant: "destructive",
-          title: "Microphone Access Denied",
-          description: "Please enable microphone permissions to use voice commands.",
+            variant: "destructive",
+            title: "Microphone Access Denied",
+            description: "Please enable microphone permissions to use voice commands.",
         });
-      });
+    }
+
+    // Start listening continuously
+    const startListening = () => {
+        SpeechRecognition.startListening({ continuous: true }).catch(err => {
+            console.error('Could not start listening:', err);
+             // This might happen if permission is denied after the initial check
+            if (err.name === 'NotAllowedError') {
+                 toast({
+                    variant: "destructive",
+                    title: "Microphone Access Denied",
+                    description: "Please enable microphone permissions to use voice commands.",
+                });
+            }
+        });
+    };
+    
+    startListening();
 
     return () => {
-      if (recognitionRef.current) {
-        // Explicitly stop and clear the reference to prevent onend restart
-        recognitionRef.current.onend = null; 
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-      }
+      SpeechRecognition.stopListening();
     };
-  }, [triggerEmergency, startRecording, stopRecording, shareLocation, isEmergencyActive, toast]);
+  }, [browserSupportsSpeechRecognition, isMicrophoneAvailable, toast]);
+  
+  useEffect(() => {
+      if (transcript) {
+          console.log("Heard:", transcript);
+      }
+  }, [transcript])
 
   return null; // This is a background component and does not render anything.
 };
