@@ -1,9 +1,11 @@
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
 import { Toaster } from '@/components/ui/toaster';
 import VoiceListener from '@/components/VoiceListener';
+import MicStatusIndicator from '@/components/MicStatusIndicator';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,6 +24,7 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased`}>
         <EmergencyProvider>
           <VoiceListener />
+          <MicStatusIndicator />
           {children}
           <Toaster />
         </EmergencyProvider>

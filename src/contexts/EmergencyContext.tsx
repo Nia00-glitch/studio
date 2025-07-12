@@ -20,6 +20,8 @@ interface EmergencyContextType {
   hasCameraPermission: boolean;
   mediaStream: MediaStream | null;
   shareLocation: () => void;
+  isListening: boolean;
+  setIsListening: (isListening: boolean) => void;
 }
 
 const defaultSettings: Settings = {
@@ -41,6 +43,8 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   hasCameraPermission: false,
   mediaStream: null,
   shareLocation: () => {},
+  isListening: false,
+  setIsListening: () => {},
 });
 
 export const useEmergencyContext = () => {
@@ -58,6 +62,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const [settings, setSettings] = useLocalStorage<Settings>('nia-settings', defaultSettings);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [isListening, setIsListening] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -240,7 +245,9 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     stopRecording,
     hasCameraPermission,
     mediaStream,
-    shareLocation
+    shareLocation,
+    isListening,
+    setIsListening,
   };
 
   return (
