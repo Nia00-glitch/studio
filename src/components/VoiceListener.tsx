@@ -17,9 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { getFlow } from '@genkit-ai/firebase/client';
-import type { EmergencyDecision, SimpleInput } from '@/lib/types';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { emergencyFlow } from '@/../functions/src/index';
+import type { emergencyFlow } from '@/../functions/src/index';
 
 
 const VoiceListener = () => {
