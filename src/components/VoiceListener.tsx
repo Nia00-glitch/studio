@@ -16,7 +16,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { simpleGenerate } from '@/../functions/src/simple-flow';
+import { getFlow } from '@genkit-ai/firebase/client';
+import type { EmergencyDecision, SimpleInput } from '@/lib/types';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { emergencyFlow } from '@/../functions/src/index';
+
 
 const VoiceListener = () => {
   const { 
@@ -55,8 +59,8 @@ const VoiceListener = () => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
       try {
+        const simpleGenerate = await getFlow<typeof emergencyFlow>('simpleGenerate');
         const aiResponse = await simpleGenerate({ prompt: spokenPhrase });
-        console.log('AI Response:', aiResponse);
         
         speak(aiResponse.responseText);
 
