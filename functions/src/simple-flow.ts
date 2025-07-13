@@ -2,9 +2,8 @@
 /**
  * @fileOverview A simple Genkit flow for text generation.
  */
-import { genkit } from 'genkit';
-import { googleAI } from '@genkit-ai/googleai';
 import { z } from 'zod';
+import { ai } from './common';
 
 // Types for simple-flow
 export const SimpleInputSchema = z.object({
@@ -17,16 +16,6 @@ export const EmergencyDecisionSchema = z.object({
   responseText: z.string().describe("A brief, reassuring response to the user."),
 });
 export type EmergencyDecision = z.infer<typeof EmergencyDecisionSchema>;
-
-export const ai = genkit({
-  plugins: [
-    googleAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    }),
-  ],
-  logLevel: 'debug',
-  enableTracingAndMetrics: true,
-});
 
 const emergencyPrompt = ai.definePrompt(
   {
@@ -57,7 +46,7 @@ const emergencyPrompt = ai.definePrompt(
   },
 );
 
-const emergencyFlow = ai.defineFlow(
+export const emergencyFlow = ai.defineFlow(
   {
     name: 'emergencyFlow',
     inputSchema: SimpleInputSchema,

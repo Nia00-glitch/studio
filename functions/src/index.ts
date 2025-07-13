@@ -1,6 +1,3 @@
-
-'use server';
-
 /**
  * @fileOverview Defines and exports a secure Genkit flow as a Firebase Cloud Function.
  *
@@ -14,8 +11,7 @@ import type { HttpsOptions } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 
 // Import your flows so that they are registered with the Genkit registry.
-import './simple-flow';
-import { simpleGenerate } from './simple-flow';
+import { emergencyFlow } from './simple-flow';
 
 // Define the GEMINI_API_KEY secret. The value is provided when you deploy.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
@@ -27,4 +23,4 @@ const httpsOptions: HttpsOptions = {
 };
 
 // Export the Genkit flow wrapper as a callable function
-export const simpleGenerate = onCallGenkit(httpsOptions, simpleGenerate);
+export const simpleGenerate = onCallGenkit(httpsOptions, emergencyFlow);
