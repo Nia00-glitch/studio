@@ -18,6 +18,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@genkit-ai/firebase": "^1.13.0",
     "@genkit-ai/googleai": "^1.13.0",
     "firebase-admin": "^12.2.0",
     "firebase-functions": "^5.0.1",
