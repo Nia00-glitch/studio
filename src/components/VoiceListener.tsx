@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { simpleGenerate } from '@/ai/flows/simple-flow';
+import { simpleGenerate } from '@/../functions/src/simple-flow';
 
 const VoiceListener = () => {
   const { 
