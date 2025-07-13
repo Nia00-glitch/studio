@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { getFlow } from '@genkit-ai/firebase/client';
-import type { emergencyFlow } from '@/../functions/src/index';
+import type { emergencyFlow } from '@/../functions/src/simple-flow';
 
 
 const VoiceListener = () => {
@@ -189,7 +189,9 @@ const VoiceListener = () => {
     }
 
     const startListening = () => {
-        SpeechRecognition.startListening({ continuous: true }).catch(err => {
+        // Here you could add logic to switch language, e.g., from a settings context
+        const language = 'en-IN'; // Defaulting to English (India)
+        SpeechRecognition.startListening({ continuous: true, language }).catch(err => {
             console.error('Could not start listening:', err);
             if (err.name === 'NotAllowedError') {
                  toast({
