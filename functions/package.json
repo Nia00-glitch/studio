@@ -14,9 +14,6 @@
   "engines": {
     "node": "18"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "private": true,
   "dependencies": {
     "genkit": "1.13.0",
