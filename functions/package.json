@@ -1,0 +1,31 @@
+{
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Genkit flows for NIA Safety Assistant",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@genkit-ai/googleai": "^1.13.0",
+    "firebase-functions": "^5.0.1",
+    "genkit": "^1.13.0",
+
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "private": true
+}
