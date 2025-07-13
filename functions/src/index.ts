@@ -1,7 +1,18 @@
 
+'use server';
+
+/**
+ * @fileOverview Defines and exports a secure Genkit flow as a Firebase Cloud Function.
+ *
+ * This file contains the primary logic for a text generation AI flow using Gemini.
+ * It is wrapped as a secure, callable function with authentication and secret management.
+ *
+ * - generateText: The exported callable Cloud Function.
+ */
+
 import { onCallGenkit } from '@genkit-ai/firebase/functions';
-import { defineSecret } from 'firebase-functions/params';
 import { HttpsOptions } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 
 // Import your flows so that they are registered with the Genkit registry.
 import './simple-flow';
