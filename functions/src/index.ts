@@ -9,13 +9,13 @@
  *
  * - generateText: The exported callable Cloud Function.
  */
-
 import { onCallGenkit } from '@genkit-ai/firebase/functions';
-import { HttpsOptions } from 'firebase-functions/v2/https';
+import type { HttpsOptions } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 
 // Import your flows so that they are registered with the Genkit registry.
 import './simple-flow';
+import { simpleGenerate } from './simple-flow';
 
 // Define the GEMINI_API_KEY secret. The value is provided when you deploy.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
@@ -27,4 +27,4 @@ const httpsOptions: HttpsOptions = {
 };
 
 // Export the Genkit flow wrapper as a callable function
-export const niaSafetyAssistant = onCallGenkit(https_Options);
+export const simpleGenerate = onCallGenkit(httpsOptions, simpleGenerate);
