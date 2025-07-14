@@ -1,13 +1,18 @@
 
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import dynamic from 'next/dynamic';
 import './globals.css';
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
 import { Toaster } from '@/components/ui/toaster';
-import VoiceListener from '@/components/VoiceListener';
 import MicStatusIndicator from '@/components/MicStatusIndicator';
 
 const inter = Inter({ subsets: ['latin'] });
+
+// Dynamically import the VoiceListener component with SSR turned off
+const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
+  ssr: false,
+});
 
 export const metadata: Metadata = {
   title: 'NIA Safety Assistant',
