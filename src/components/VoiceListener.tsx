@@ -16,16 +16,16 @@ const VoiceListener = () => {
     triggerEmergency, 
     startRecording, 
     stopRecording, 
-    shareLocation, 
-    deactivateEmergency, 
     isEmergencyActive,
     setIsListening
   } = useEmergencyContext();
   const { toast } = useToast();
   
   const speak = (text: string) => {
-    if ('speechSynthesis' in window) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
+      // You could add language selection here in the future
+      // utterance.lang = 'en-IN'; 
       window.speechSynthesis.speak(utterance);
     } else {
       console.warn("Browser does not support speech synthesis.");
@@ -33,21 +33,20 @@ const VoiceListener = () => {
   };
 
   const emergencyCallback = useCallback(async (spokenPhrase: string) => {
-    if (!isEmergencyActive) {
+    if (!isEmergencyActive && spokenPhrase) {
       console.log('Passing to AI:', spokenPhrase);
       try {
         const functions = getFunctions(app);
-        // Use httpsCallable to securely call the backend function.
-        const simpleGenerate = httpsCallable(functions, 'simpleGenerate');
-        // The data must be wrapped in an object that matches the flow's input schema.
+        const simpleGenerate = httpsCallable< { prompt: string }, EmergencyDecision >(functions, 'simpleGenerate');
+        
         const result = await simpleGenerate({ prompt: spokenPhrase });
-        const aiResponse = result.data as EmergencyDecision;
+        const aiResponse = result.data;
         
         console.log("AI Response:", aiResponse);
         speak(aiResponse.responseText);
 
         if (aiResponse.activateEmergency) {
-          triggerEmergency({ silent: true });
+          triggerEmergency({ silent: true }); // Trigger silently as AI provides spoken feedback
         }
       } catch (error) {
         console.error("Error calling httpsCallable function:", error);
@@ -60,90 +59,49 @@ const VoiceListener = () => {
     }
   }, [isEmergencyActive, triggerEmergency, toast]);
 
-
-  const startRecordingCallback = useCallback(async () => {
-      await startRecording();
+  const startRecordingCallback = useCallback(() => {
+      startRecording();
       speak("Recording started.");
   }, [startRecording]);
 
-  const stopRecordingCallback = useCallback(async () => {
+  const stopRecordingCallback = useCallback(() => {
       stopRecording();
       speak("Recording stopped.");
   }, [stopRecording]);
 
-  const shareLocationCallback = useCallback(async () => {
-      shareLocation();
-      speak("Sharing your location.");
-  }, [shareLocation]);
-  
-  const deactivateEmergencyCallback = useCallback(async () => {
-      deactivateEmergency();
-      speak("Emergency mode deactivated.");
-  }, [deactivateEmergency]);
-
+  // Specific commands that are not ambiguous are kept.
+  // Ambiguous commands like "help" are sent to the AI.
   const commands = [
       {
-        command: [
-            'NIA',
-            'NIA help',
-            'NIA help me',
-            'help me',
-            'NIA bachao',
-            'NIA emergency',
-            'NIA emergency mode',
-            'NIA madad karo',
-            'madad karo',
-            'emergency',
-            'NIA alert',
-            'activate safety mode',
-            'send for help',
-        ],
-        callback: (command: string, spokenPhrase: string) => 
-            emergencyCallback(spokenPhrase),
-        matchInterim: true,
+        command: ['NIA start recording', 'NIA recording start karo', 'start recording'],
+        callback: startRecordingCallback,
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.7,
+        fuzzyMatchingThreshold: 0.8
       },
       {
-        command: [
-            'NIA start recording',
-            'NIA recording start',
-            'NIA recording chalu karo',
-            'start recording',
-            'NIA record',
-            'record',
-            'chalu karo recording',
-        ],
-        callback: () => startRecordingCallback(),
+        command: ['NIA stop recording', 'NIA recording band karo', 'stop recording'],
+        callback: stopRecordingCallback,
         isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.7,
-      },
-      {
-        command: ['NIA stop recording', 'NIA recording stop', 'NIA recording band karo'],
-        callback: () => stopRecordingCallback(),
-        isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.7,
-      },
-      {
-        command: ['NIA cancel', 'NIA stop emergency', 'cancel emergency', 'NIA stand down'],
-        callback: () => deactivateEmergencyCallback(),
-        isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.7,
-      },
-       {
-        command: ['NIA share location', 'NIA location share karo'],
-        callback: () => shareLocationCallback(),
-        isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.7,
+        fuzzyMatchingThreshold: 0.8
       }
     ];
 
   const {
-    transcript,
     listening,
     browserSupportsSpeechRecognition,
     isMicrophoneAvailable,
+    finalTranscript,
+    resetTranscript
   } = useSpeechRecognition({ commands });
+
+  // Effect to send final transcript to AI for analysis
+  useEffect(() => {
+    if (finalTranscript) {
+        emergencyCallback(finalTranscript);
+        resetTranscript(); // Reset after processing
+    }
+  }, [finalTranscript, emergencyCallback, resetTranscript]);
+
 
   useEffect(() => {
       setIsListening(listening);
@@ -170,7 +128,7 @@ const VoiceListener = () => {
 
     const startListening = () => {
         // Here you could add logic to switch language, e.g., from a settings context
-        const language = 'en-IN'; // Defaulting to English (India)
+        const language = 'en-IN';
         SpeechRecognition.startListening({ continuous: true, language }).catch(err => {
             console.error('Could not start listening:', err);
             if (err.name === 'NotAllowedError') {
@@ -189,12 +147,6 @@ const VoiceListener = () => {
       SpeechRecognition.stopListening();
     };
   }, [browserSupportsSpeechRecognition, isMicrophoneAvailable, toast]);
-  
-  useEffect(() => {
-      if (transcript) {
-          console.log("Heard:", transcript);
-      }
-  }, [transcript])
 
   return null; // This is a listener component, it does not render a UI.
 };
