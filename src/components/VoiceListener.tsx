@@ -7,8 +7,8 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '@/lib/firebase';
-import type { EmergencyDecision } from '@/lib/types';
+import { app } from '@/lib/firebase'; // Correctly import the initialized Firebase app
+import type { EmergencyDecision } from '@/lib/types'; // Correctly import the shared type
 
 
 const VoiceListener = () => {
@@ -37,8 +37,9 @@ const VoiceListener = () => {
       console.log('Passing to AI:', spokenPhrase);
       try {
         const functions = getFunctions(app);
+        // Use httpsCallable to securely call the backend function.
         const simpleGenerate = httpsCallable(functions, 'simpleGenerate');
-        // The data must be wrapped in an object that matches the flow's input schema
+        // The data must be wrapped in an object that matches the flow's input schema.
         const result = await simpleGenerate({ prompt: spokenPhrase });
         const aiResponse = result.data as EmergencyDecision;
         

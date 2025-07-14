@@ -14,11 +14,11 @@ import { emergencyFlow } from './simple-flow';
 // Define the GEMINI_API_KEY secret. The value is provided when you deploy.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 
-// Define options for the Cloud Function
+// Define options for the Cloud Function. This is the production-ready way.
 const httpsOptions: HttpsOptions = {
   secrets: [geminiApiKey], // Make the secret available to the function
   enforceAppCheck: false, // In a real app, set this to true for security.
 };
 
-// Export the Genkit flow wrapper as a callable function
+// Export the Genkit flow wrapper as a callable function using the modern signature.
 export const simpleGenerate = onCallGenkit(httpsOptions, emergencyFlow);
