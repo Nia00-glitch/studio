@@ -1,0 +1,145 @@
+[2025-07-14T07:08:24.445Z] Object "" in "firebase.json" has unknown property: {"additionalProperty":"genkit"}
+[2025-07-14T07:08:24.466Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:24.469Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:24.469Z] [iam] checking project nia-mvp for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[2025-07-14T07:08:24.482Z] No OAuth tokens found
+[2025-07-14T07:08:24.483Z] No OAuth tokens found
+[2025-07-14T07:08:24.488Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:24.489Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:24.496Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp:testIamPermissions [none]
+[2025-07-14T07:08:24.501Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp:testIamPermissions x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:24.502Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[2025-07-14T07:08:25.369Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp:testIamPermissions 200
+[2025-07-14T07:08:25.372Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[2025-07-14T07:08:25.373Z] No OAuth tokens found
+[2025-07-14T07:08:25.373Z] No OAuth tokens found
+[2025-07-14T07:08:25.373Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:25.374Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:25.377Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/nia-mvp/serviceAccounts/nia-mvp@appspot.gserviceaccount.com:testIamPermissions [none]
+[2025-07-14T07:08:25.378Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/nia-mvp/serviceAccounts/nia-mvp@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[2025-07-14T07:08:26.382Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/nia-mvp/serviceAccounts/nia-mvp@appspot.gserviceaccount.com:testIamPermissions 200
+[2025-07-14T07:08:26.383Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/nia-mvp/serviceAccounts/nia-mvp@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+
+=== Deploying to 'nia-mvp'...
+
+i  deploying functions 
+[2025-07-14T07:08:26.396Z] No OAuth tokens found
+[2025-07-14T07:08:26.399Z] No OAuth tokens found
+[2025-07-14T07:08:26.401Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:26.401Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:26.402Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudresourcemanager.googleapis.com [none]
+[2025-07-14T07:08:26.402Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudresourcemanager.googleapis.com x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:27.480Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudresourcemanager.googleapis.com 200
+[2025-07-14T07:08:27.483Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudresourcemanager.googleapis.com [omitted]
+[2025-07-14T07:08:27.484Z] No OAuth tokens found
+[2025-07-14T07:08:27.484Z] No OAuth tokens found
+[2025-07-14T07:08:27.484Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:27.484Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:27.487Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp [none]
+[2025-07-14T07:08:27.704Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp 200
+[2025-07-14T07:08:27.705Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/nia-mvp {"projectNumber":"857997595307","projectId":"nia-mvp","lifecycleState":"ACTIVE","name":"NIA MVP","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-06-28T10:49:24.683373Z"}
+i  functions: preparing codebase default for deployment 
+i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[2025-07-14T07:08:27.710Z] No OAuth tokens found
+[2025-07-14T07:08:27.710Z] No OAuth tokens found
+[2025-07-14T07:08:27.710Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:27.714Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:27.717Z] No OAuth tokens found
+[2025-07-14T07:08:27.718Z] No OAuth tokens found
+[2025-07-14T07:08:27.721Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:27.721Z] > authorizing via signed-in user (arsh94588@gmail.com)
+i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[2025-07-14T07:08:27.723Z] No OAuth tokens found
+[2025-07-14T07:08:27.726Z] No OAuth tokens found
+[2025-07-14T07:08:27.726Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:27.726Z] > authorizing via signed-in user (arsh94588@gmail.com)
+i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[2025-07-14T07:08:27.728Z] No OAuth tokens found
+[2025-07-14T07:08:27.731Z] No OAuth tokens found
+[2025-07-14T07:08:27.731Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:27.732Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:27.734Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudfunctions.googleapis.com [none]
+[2025-07-14T07:08:27.734Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:27.736Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/runtimeconfig.googleapis.com [none]
+[2025-07-14T07:08:27.739Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/runtimeconfig.googleapis.com x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:27.745Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudbuild.googleapis.com [none]
+[2025-07-14T07:08:27.746Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudbuild.googleapis.com x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:27.757Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/artifactregistry.googleapis.com [none]
+[2025-07-14T07:08:27.758Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/artifactregistry.googleapis.com x-goog-quota-user=projects/nia-mvp
+[2025-07-14T07:08:28.800Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudfunctions.googleapis.com 200
+[2025-07-14T07:08:28.801Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudfunctions.googleapis.com [omitted]
+✔  functions: required API cloudfunctions.googleapis.com is enabled 
+[2025-07-14T07:08:28.832Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/runtimeconfig.googleapis.com 200
+[2025-07-14T07:08:28.834Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/runtimeconfig.googleapis.com [omitted]
+[2025-07-14T07:08:28.842Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/artifactregistry.googleapis.com 200
+[2025-07-14T07:08:28.846Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/artifactregistry.googleapis.com [omitted]
+✔  artifactregistry: required API artifactregistry.googleapis.com is enabled 
+[2025-07-14T07:08:28.855Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudbuild.googleapis.com 200
+[2025-07-14T07:08:28.855Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/nia-mvp/services/cloudbuild.googleapis.com [omitted]
+✔  functions: required API cloudbuild.googleapis.com is enabled 
+[2025-07-14T07:08:28.856Z] No OAuth tokens found
+[2025-07-14T07:08:28.856Z] No OAuth tokens found
+[2025-07-14T07:08:28.856Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:28.862Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:28.862Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/nia-mvp/adminSdkConfig [none]
+[2025-07-14T07:08:29.131Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/nia-mvp/adminSdkConfig 200
+[2025-07-14T07:08:29.132Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/nia-mvp/adminSdkConfig {"projectId":"nia-mvp","storageBucket":"nia-mvp.firebasestorage.app"}
+[2025-07-14T07:08:29.133Z] No OAuth tokens found
+[2025-07-14T07:08:29.134Z] No OAuth tokens found
+[2025-07-14T07:08:29.134Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2025-07-14T07:08:29.134Z] > authorizing via signed-in user (arsh94588@gmail.com)
+[2025-07-14T07:08:29.135Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/nia-mvp/configs [none]
+[2025-07-14T07:08:29.383Z] <<< [apiv2][status] GET https://runtimeconfig.googleapis.com/v1beta1/projects/nia-mvp/configs 200
+[2025-07-14T07:08:29.384Z] <<< [apiv2][body] GET https://runtimeconfig.googleapis.com/v1beta1/projects/nia-mvp/configs {}
+[2025-07-14T07:08:29.387Z] Validating nodejs source
+⚠  functions: Runtime Node.js 18 was deprecated on 2025-04-30 and will be decommissioned on 2025-10-30, after which you will not be able to deploy without upgrading. Consider upgrading now to avoid disruption. See https://cloud.google.com/functions/docs/runtime-support for full details on the lifecycle policy 
+[2025-07-14T07:08:30.092Z] > [functions] package.json contents: {
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Genkit flows for NIA Safety Assistant",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "private": true,
+  "dependencies": {
+    "@genkit-ai/firebase": "^1.14.1",
+    "@genkit-ai/googleai": "^1.14.1",
+    "firebase-admin": "^12.3.0",
+    "firebase-functions": "^6.3.2",
+    "genkit": "^1.14.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
+[2025-07-14T07:08:30.093Z] Building nodejs source
+i  functions: Loading and analyzing source code for codebase default to determine what to deploy 
+[2025-07-14T07:08:30.099Z] Could not find functions.yaml. Must use http discovery
+[2025-07-14T07:08:30.109Z] Found firebase-functions binary at '/home/user/studio/functions/node_modules/.bin/firebase-functions'
+Serving at port 8470
+
+TypeError: plugin is not a function
+    at /home/user/studio/functions/node_modules/genkit/lib/genkit.js:398:28
+    at Array.forEach (<anonymous>)
+    at Genkit.configure (/home/user/studio/functions/node_modules/genkit/lib/genkit.js:397:13)
+    at new Genkit (/home/user/studio/functions/node_modules/genkit/lib/genkit.js:57:10)
+    at genkit (/home/user/studio/functions/node_modules/genkit/lib/genkit.js:429:10)
+    at Object.<anonymous> (/home/user/studio/functions/lib/common.js:10:34)
+    at Module._compile (node:internal/modules/cjs/loader:1529:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1613:10)
+    at Module.load (node:internal/modules/cjs/loader:1275:32)
+    at Module._load (node:internal/modules/cjs/loader:1096:12)
+
+[2025-07-14T07:08:31.599Z] Got response code 400; body Failed to generate manifest from function source: TypeError: plugin is not a function
+
+Error: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error

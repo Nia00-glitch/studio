@@ -1,9 +1,5 @@
 {
   "functions": {
     "source": "functions"
-  },
-  "genkit": {
-    "flowsDirectory": "functions/src",
-    "functions": true
   }
 }
