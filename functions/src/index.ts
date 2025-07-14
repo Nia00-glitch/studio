@@ -5,7 +5,7 @@
  * It is wrapped as a secure, callable function with authentication and secret management.
  */
 import { onCall } from 'firebase-functions/v2/https';
-import { onCallGenkit } from 'genkit/firebase/functions';
+import { onCallGenkit } from 'genkit';
 import { emergencyFlow } from './simple-flow';
 import { defineSecret } from 'firebase-functions/params';
 
