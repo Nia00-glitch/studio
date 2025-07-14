@@ -1,4 +1,4 @@
-import { onRequest } from 'firebase-functions/v2/https';
+import { onCallGenkit } from '@genkit-ai/firebase';
 import { emergencyFlow } from './simple-flow';
 
-export const simpleGenerate = onRequest({ cors: true }, emergencyFlow);
+export const simpleGenerate = onCallGenkit({}, emergencyFlow);
