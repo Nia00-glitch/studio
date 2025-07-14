@@ -8,7 +8,7 @@ import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '@/lib/firebase'; // Correctly import the initialized Firebase app
-import type { EmergencyDecision } from '@/lib/types'; // Correctly import the shared type
+import type { EmergencyDecision, SimpleInput } from '@/lib/types'; // Correctly import the shared type
 
 
 const VoiceListener = () => {
@@ -37,7 +37,8 @@ const VoiceListener = () => {
       console.log('Passing to AI:', spokenPhrase);
       try {
         const functions = getFunctions(app);
-        const simpleGenerate = httpsCallable< { prompt: string }, EmergencyDecision >(functions, 'simpleGenerate');
+        // Correctly typed httpsCallable
+        const simpleGenerate = httpsCallable<SimpleInput, EmergencyDecision>(functions, 'simpleGenerate');
         
         const result = await simpleGenerate({ prompt: spokenPhrase });
         const aiResponse = result.data;
