@@ -2,20 +2,10 @@
 "use client";
 
 import 'regenerator-runtime/runtime';
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '@/lib/firebase';
 import type { EmergencyDecision } from '@/lib/types';
@@ -32,11 +22,6 @@ const VoiceListener = () => {
     setIsListening
   } = useEmergencyContext();
   const { toast } = useToast();
-
-  const [confirmation, setConfirmation] = useState<{
-    message: string;
-    onConfirm: () => void;
-  } | null>(null);
   
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -47,22 +32,17 @@ const VoiceListener = () => {
     }
   };
 
-  const handleCommand = useCallback(async (
-    commandCallback: (spokenPhrase: string) => Promise<void>,
-    spokenPhrase: string,
-  ) => {
-    await commandCallback(spokenPhrase);
-  }, []);
-
   const emergencyCallback = useCallback(async (spokenPhrase: string) => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
       try {
         const functions = getFunctions(app);
         const simpleGenerate = httpsCallable(functions, 'simpleGenerate');
+        // The data must be wrapped in an object that matches the flow's input schema
         const result = await simpleGenerate({ prompt: spokenPhrase });
         const aiResponse = result.data as EmergencyDecision;
         
+        console.log("AI Response:", aiResponse);
         speak(aiResponse.responseText);
 
         if (aiResponse.activateEmergency) {
@@ -118,7 +98,7 @@ const VoiceListener = () => {
             'send for help',
         ],
         callback: (command: string, spokenPhrase: string) => 
-            handleCommand(emergencyCallback, spokenPhrase),
+            emergencyCallback(spokenPhrase),
         matchInterim: true,
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
@@ -133,29 +113,25 @@ const VoiceListener = () => {
             'record',
             'chalu karo recording',
         ],
-        callback: (command: string, spokenPhrase: string) =>
-            handleCommand(startRecordingCallback, spokenPhrase),
+        callback: () => startRecordingCallback(),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA stop recording', 'NIA recording stop', 'NIA recording band karo'],
-        callback: (command: string, spokenPhrase: string) =>
-            handleCommand(stopRecordingCallback, spokenPhrase),
+        callback: () => stopRecordingCallback(),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
       {
         command: ['NIA cancel', 'NIA stop emergency', 'cancel emergency', 'NIA stand down'],
-        callback: (command: string, spokenPhrase: string) =>
-            handleCommand(deactivateEmergencyCallback, spokenPhrase),
+        callback: () => deactivateEmergencyCallback(),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       },
        {
         command: ['NIA share location', 'NIA location share karo'],
-        callback: (command: string, spokenPhrase: string) =>
-            handleCommand(shareLocationCallback, spokenPhrase),
+        callback: () => shareLocationCallback(),
         isFuzzyMatch: true,
         fuzzyMatchingThreshold: 0.7,
       }
@@ -219,31 +195,7 @@ const VoiceListener = () => {
       }
   }, [transcript])
 
-  const handleCancel = () => {
-    setConfirmation(null);
-  };
-
-
-  return (
-    <>
-      {confirmation && (
-        <AlertDialog open={!!confirmation} onOpenChange={(open) => !open && handleCancel()}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirm Action</AlertDialogTitle>
-              <AlertDialogDescription>
-                {confirmation.message}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancel}>No, Ignore</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmation.onConfirm}>Yes, Proceed</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-    </>
-  );
+  return null; // This is a listener component, it does not render a UI.
 };
 
 export default VoiceListener;

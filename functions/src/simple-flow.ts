@@ -1,22 +1,25 @@
+
 'use server';
 /**
- * @fileOverview A simple Genkit flow for text generation.
+ * @fileOverview A Genkit flow to determine if a user's voice command is an emergency.
  */
 import { z } from 'zod';
 import { ai } from './common';
 
-// Types for simple-flow
+// Input schema for the emergency flow
 export const SimpleInputSchema = z.object({
   prompt: z.string(),
 });
 export type SimpleInput = z.infer<typeof SimpleInputSchema>;
 
+// Output schema defining the AI's decision
 export const EmergencyDecisionSchema = z.object({
   activateEmergency: z.boolean().describe("A boolean indicating if emergency mode should be activated."),
   responseText: z.string().describe("A brief, reassuring response to the user."),
 });
 export type EmergencyDecision = z.infer<typeof EmergencyDecisionSchema>;
 
+// The prompt that instructs the AI model
 const emergencyPrompt = ai.definePrompt(
   {
     name: 'emergencyPrompt',
@@ -46,6 +49,7 @@ const emergencyPrompt = ai.definePrompt(
   },
 );
 
+// The main flow that executes the prompt
 export const emergencyFlow = ai.defineFlow(
   {
     name: 'emergencyFlow',
@@ -57,7 +61,3 @@ export const emergencyFlow = ai.defineFlow(
     return output!;
   }
 );
-
-export async function simpleGenerate(prompt: SimpleInput): Promise<z.infer<typeof EmergencyDecisionSchema>> {
-  return emergencyFlow(prompt);
-}
