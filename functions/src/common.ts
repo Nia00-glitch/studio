@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Shared Genkit AI configuration.
  */

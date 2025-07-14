@@ -1,4 +1,3 @@
-
 import { onCallGenkit } from '@genkit-ai/firebase';
 import { emergencyFlow } from './simple-flow';
 
