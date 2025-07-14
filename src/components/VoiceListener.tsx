@@ -16,8 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { getFlow } from '@genkit-ai/firebase/client';
-import type { emergencyFlow } from '@/../functions/src/simple-flow';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '@/lib/firebase';
+import type { EmergencyDecision } from '@/lib/types';
 
 
 const VoiceListener = () => {
@@ -57,8 +58,10 @@ const VoiceListener = () => {
     if (!isEmergencyActive) {
       console.log('Passing to AI:', spokenPhrase);
       try {
-        const simpleGenerate = await getFlow<typeof emergencyFlow>('simpleGenerate');
-        const aiResponse = await simpleGenerate({ prompt: spokenPhrase });
+        const functions = getFunctions(app);
+        const simpleGenerate = httpsCallable(functions, 'simpleGenerate');
+        const result = await simpleGenerate({ prompt: spokenPhrase });
+        const aiResponse = result.data as EmergencyDecision;
         
         speak(aiResponse.responseText);
 
@@ -66,7 +69,7 @@ const VoiceListener = () => {
           triggerEmergency({ silent: true });
         }
       } catch (error) {
-        console.error("Error calling AI flow:", error);
+        console.error("Error calling httpsCallable function:", error);
         toast({
           variant: "destructive",
           title: "AI Error",
