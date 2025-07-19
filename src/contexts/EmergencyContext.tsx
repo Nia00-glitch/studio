@@ -85,20 +85,19 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const { toast } = useToast();
 
   useEffect(() => {
+    // This effect runs only on the client, after hydration
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
-    if (typeof window !== 'undefined') {
-        setIsOnline(navigator.onLine);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-    }
+    // Set initial state from the browser
+    setIsOnline(navigator.onLine);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     
     return () => {
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        }
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
