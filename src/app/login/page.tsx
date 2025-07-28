@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { Loader2 } from 'lucide-react';
 declare global {
   interface Window {
     recaptchaVerifier?: RecaptchaVerifier;
-    confirmationResult?: any;
+    confirmationResult?: ConfirmationResult;
   }
 }
 
@@ -27,7 +27,8 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const setupRecaptcha = () => {
+  // Set up reCAPTCHA verifier once the component has mounted on the client
+  useEffect(() => {
     if (!window.recaptchaVerifier) {
       window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
         'size': 'invisible',
@@ -36,25 +37,32 @@ export default function LoginPage() {
         }
       });
     }
-    return window.recaptchaVerifier;
-  };
+  }, []);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (!window.recaptchaVerifier) {
+        toast({ variant: 'destructive', title: 'Error', description: 'reCAPTCHA not initialized. Please refresh.' });
+        setLoading(false);
+        return;
+    }
+
     try {
-      const appVerifier = setupRecaptcha();
-      const confirmationResult = await signInWithPhoneNumber(auth, `+${phoneNumber}`, appVerifier);
+      const confirmationResult = await signInWithPhoneNumber(auth, `+${phoneNumber}`, window.recaptchaVerifier);
       window.confirmationResult = confirmationResult;
       setStep('otp');
       toast({ title: 'OTP Sent', description: 'Please check your phone.' });
     } catch (error: any) {
       console.error("Error sending OTP:", error);
       toast({ variant: 'destructive', title: 'Error', description: error.message });
+      // Reset reCAPTCHA
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.render().then(widgetId => {
-            // @ts-ignore
-            grecaptcha.reset(widgetId);
+          // @ts-ignore
+          if (window.grecaptcha) {
+            window.grecaptcha.reset(widgetId);
+          }
         });
       }
     }
@@ -64,6 +72,13 @@ export default function LoginPage() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    if (!window.confirmationResult) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Verification session expired. Please try again.' });
+        setStep('phone');
+        setLoading(false);
+        return;
+    }
+
     try {
       await window.confirmationResult.confirm(otp);
       toast({ title: 'Success', description: 'Phone number verified!' });
