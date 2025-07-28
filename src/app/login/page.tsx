@@ -28,20 +28,40 @@ function LoginForm() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // This effect ensures reCAPTCHA is only initialized on the client side.
     if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible',
-        'callback': (response: any) => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        }
-      });
-      window.recaptchaVerifier.render();
+      // It's important that the container is visible, but we can make it tiny.
+      const recaptchaContainer = document.getElementById('recaptcha-container');
+      if (recaptchaContainer) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, {
+          'size': 'invisible',
+          'callback': (response: any) => {
+            // reCAPTCHA solved, allow signInWithPhoneNumber.
+          }
+        });
+        window.recaptchaVerifier.render();
+      }
     }
   }, []);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // Basic validation for E.164 format. It should start with a country code and be at least 10 digits long.
+    // This regex checks for a string of digits between 10 and 15 characters.
+    const phoneRegex = /^\d{10,15}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+        toast({
+            variant: 'destructive',
+            title: 'Invalid Phone Number',
+            description: 'Please enter a valid number including country code (e.g., 911234567890).',
+        });
+        setLoading(false);
+        return;
+    }
+
+
     if (!window.recaptchaVerifier) {
         toast({ variant: 'destructive', title: 'Error', description: 'reCAPTCHA not initialized. Please refresh.' });
         setLoading(false);
@@ -55,8 +75,8 @@ function LoginForm() {
       toast({ title: 'OTP Sent', description: 'Please check your phone.' });
     } catch (error: any) {
       console.error("Error sending OTP:", error);
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
-      // Reset reCAPTCHA
+      toast({ variant: 'destructive', title: 'Error sending OTP', description: 'Please check the phone number and try again.' });
+      // It's good practice to reset reCAPTCHA on error.
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.render().then(widgetId => {
           // @ts-ignore
@@ -93,7 +113,8 @@ function LoginForm() {
 
   return (
     <>
-      <div id="recaptcha-container"></div>
+      {/* This container is essential for reCAPTCHA to function */}
+      <div id="recaptcha-container" style={{ position: 'absolute', bottom: 0, right: 0 }}></div>
       <CardContent>
         {step === 'phone' ? (
           <form onSubmit={handleSendOtp} className="space-y-4">
@@ -143,7 +164,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm relative overflow-hidden">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <NIAIcon className="w-16 h-16 text-primary" />
