@@ -2,6 +2,7 @@
 "use client";
 
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
+import { AuthProvider } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/toaster';
 import MicStatusIndicator from '@/components/MicStatusIndicator';
 import dynamic from 'next/dynamic';
@@ -13,11 +14,13 @@ const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
-    <EmergencyProvider>
-      <VoiceListener />
-      <MicStatusIndicator />
-      {children}
-      <Toaster />
-    </EmergencyProvider>
+    <AuthProvider>
+      <EmergencyProvider>
+        <VoiceListener />
+        <MicStatusIndicator />
+        {children}
+        <Toaster />
+      </EmergencyProvider>
+    </AuthProvider>
   );
 }

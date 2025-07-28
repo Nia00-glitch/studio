@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 
 export interface Contact {
@@ -11,6 +12,18 @@ export interface Settings {
   enableRecording: boolean;
   contacts: Contact[];
 }
+
+// User Profile for Firestore
+export interface UserProfile {
+  uid: string;
+  name: string;
+  phoneNumber: string;
+  role: 'rider' | 'driver';
+  emergencyContact?: string;
+  vehicleInfo?: string;
+  createdAt: any; // Firestore ServerTimestamp
+}
+
 
 // Types for simple-flow
 export const SimpleInputSchema = z.object({
