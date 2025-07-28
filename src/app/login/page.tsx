@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -27,7 +27,6 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Set up reCAPTCHA verifier once the component has mounted on the client
   useEffect(() => {
     if (!window.recaptchaVerifier) {
       window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
@@ -36,6 +35,7 @@ export default function LoginPage() {
           // reCAPTCHA solved, allow signInWithPhoneNumber.
         }
       });
+      window.recaptchaVerifier.render();
     }
   }, []);
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.render().then(widgetId => {
           // @ts-ignore
-          if (window.grecaptcha) {
+          if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
             window.grecaptcha.reset(widgetId);
           }
         });
@@ -92,8 +92,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+    <>
       <div id="recaptcha-container"></div>
+      <CardContent>
+        {step === 'phone' ? (
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            <Input
+              type="tel"
+              placeholder="911234567890"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              required
+            />
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Send OTP
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <Input
+              type="text"
+              placeholder="123456"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              required
+              maxLength={6}
+            />
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Verify OTP
+            </Button>
+            <Button variant="link" onClick={() => setStep('phone')} className="w-full">
+              Change phone number
+            </Button>
+          </form>
+        )}
+      </CardContent>
+    </>
+  );
+}
+
+
+export default function LoginPage() {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
@@ -101,44 +150,15 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl">Safety Rides Connect</CardTitle>
           <CardDescription>
-            {step === 'phone' ? 'Enter your phone number to begin' : 'Enter the OTP you received'}
+            Enter your phone number to begin
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {step === 'phone' ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <Input
-                type="tel"
-                placeholder="911234567890"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                required
-              />
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send OTP
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <Input
-                type="text"
-                placeholder="123456"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                required
-                maxLength={6}
-              />
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Verify OTP
-              </Button>
-              <Button variant="link" onClick={() => setStep('phone')} className="w-full">
-                Change phone number
-              </Button>
-            </form>
-          )}
-        </CardContent>
+        {isClient ? <LoginForm /> : (
+            <div className="p-6 pt-0 space-y-4">
+                <div className="h-10 w-full bg-muted rounded-md animate-pulse"></div>
+                <div className="h-10 w-full bg-muted rounded-md animate-pulse"></div>
+            </div>
+        )}
       </Card>
     </div>
   );
