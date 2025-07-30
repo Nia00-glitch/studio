@@ -2,7 +2,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,26 +19,8 @@ const auth = getAuth(app);
 const storage = getStorage(app);
 const db = getFirestore(app);
 
-// Enable offline persistence
-if (typeof window !== 'undefined') {
-  try {
-    enableIndexedDbPersistence(db)
-      .then(() => console.log('Firestore offline persistence enabled.'))
-      .catch((err) => {
-         if (err.code === 'failed-precondition') {
-            console.warn(
-              'Firestore offline persistence could not be enabled: Multiple tabs open?'
-            );
-          } else if (err.code === 'unimplemented') {
-            console.warn(
-              'Firestore offline persistence is not available in this browser.'
-            );
-          }
-      });
-  } catch (err: any) {
-    console.error("Error enabling offline persistence: ", err);
-  }
-}
-
+// NOTE: Offline persistence is now enabled directly within AuthContext
+// to guarantee it runs before any Firestore operations. This prevents
+// race conditions on initial app load.
 
 export { app, auth, storage, db };
