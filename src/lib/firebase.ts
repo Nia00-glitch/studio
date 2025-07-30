@@ -22,17 +22,21 @@ const db = getFirestore(app);
 // Enable offline persistence
 if (typeof window !== 'undefined') {
   try {
-    enableIndexedDbPersistence(db);
+    enableIndexedDbPersistence(db)
+      .then(() => console.log('Firestore offline persistence enabled.'))
+      .catch((err) => {
+         if (err.code === 'failed-precondition') {
+            console.warn(
+              'Firestore offline persistence could not be enabled: Multiple tabs open?'
+            );
+          } else if (err.code === 'unimplemented') {
+            console.warn(
+              'Firestore offline persistence is not available in this browser.'
+            );
+          }
+      });
   } catch (err: any) {
-    if (err.code === 'failed-precondition') {
-      console.warn(
-        'Firestore offline persistence could not be enabled: Multiple tabs open?'
-      );
-    } else if (err.code === 'unimplemented') {
-      console.warn(
-        'Firestore offline persistence is not available in this browser.'
-      );
-    }
+    console.error("Error enabling offline persistence: ", err);
   }
 }
 
