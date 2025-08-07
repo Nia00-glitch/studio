@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm, useFieldArray, Controller } from "react-hook-form";
@@ -5,17 +6,20 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { v4 as uuidv4 } from 'uuid';
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, PlusCircle, Save, UploadCloud, AlertTriangle } from "lucide-react";
+import { Trash2, PlusCircle, Save, UploadCloud, AlertTriangle, User, Car, Loader2 } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { uploadRecordingToFirebase } from "@/lib/storage";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const phoneRegex = new RegExp(
   /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
@@ -35,7 +39,11 @@ const settingsSchema = z.object({
 
 export default function SettingsClient() {
   const { settings, updateSettings, triggerEmergency } = useEmergencyContext();
+  const { userProfile, updateRole } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
+  const [isSwitchingRole, setIsSwitchingRole] = useState(false);
+
 
   const form = useForm<z.infer<typeof settingsSchema>>({
     resolver: zodResolver(settingsSchema),
@@ -87,20 +95,75 @@ export default function SettingsClient() {
     }
   };
 
+  const handleRoleChange = async (newRole: 'rider' | 'driver') => {
+    if (!userProfile || userProfile.role === newRole) return;
+    setIsSwitchingRole(true);
+    try {
+      await updateRole(newRole);
+      toast({
+        title: "Role Switched!",
+        description: `You are now in ${newRole} mode.`,
+      });
+      // Redirect to the correct dashboard after switching
+      router.replace(newRole === 'driver' ? '/driver-home' : '/rider-home');
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: "Error switching role",
+        description: error.message,
+      });
+    } finally {
+      setIsSwitchingRole(false);
+    }
+  };
+
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Action Required: Deploy Storage Rules</AlertTitle>
-          <AlertDescription>
-            The `storage.rules` file has been added to your project with an insecure default. You must deploy these rules to your Firebase project for uploads to work.
-            <a href="https://firebase.google.com/docs/cli/storage" target="_blank" rel="noopener noreferrer" className="font-bold underline ml-1">
-              Learn how to deploy here.
-            </a>
-          </AlertDescription>
-        </Alert>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>Operating Mode</CardTitle>
+            <CardDescription>Switch between Rider and Driver modes.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isSwitchingRole ? (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+                <span>Switching mode...</span>
+              </div>
+            ) : (
+              <RadioGroup
+                defaultValue={userProfile?.role}
+                onValueChange={(value: 'rider' | 'driver') => handleRoleChange(value)}
+                className="grid grid-cols-2 gap-4"
+                disabled={isSwitchingRole}
+              >
+                <div>
+                  <RadioGroupItem value="rider" id="rider" className="peer sr-only" />
+                  <FormLabel
+                    htmlFor="rider"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                  >
+                    <User className="mb-3 h-6 w-6" />
+                    Rider
+                  </FormLabel>
+                </div>
+                <div>
+                  <RadioGroupItem value="driver" id="driver" className="peer sr-only" />
+                  <FormLabel
+                    htmlFor="driver"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                  >
+                    <Car className="mb-3 h-6 w-6" />
+                    Driver
+                  </FormLabel>
+                </div>
+              </RadioGroup>
+            )}
+          </CardContent>
+        </Card>
         
         <Card>
           <CardHeader>

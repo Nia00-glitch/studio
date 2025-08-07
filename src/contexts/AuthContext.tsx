@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/lib/types';
 import { useRouter } from 'next/navigation';
@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   logout: () => void;
   createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt'>) => Promise<void>;
+  updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,8 +110,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUserProfile(newUserProfile);
     setLoading(false);
   };
+
+  const updateRole = async (newRole: 'rider' | 'driver') => {
+    if (!user) throw new Error("No user logged in to update role for.");
+    if (!userProfile) throw new Error("User profile not loaded yet.");
+
+    const userDocRef = doc(db, 'users', user.uid);
+    await updateDoc(userDocRef, { role: newRole });
+    setUserProfile({ ...userProfile, role: newRole });
+  };
   
-  const value = { user, userProfile, loading, logout, createUserProfile };
+  const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
 
   // Render a loading screen until Firebase persistence is confirmed,
   // preventing any child components from making premature Firestore calls.
