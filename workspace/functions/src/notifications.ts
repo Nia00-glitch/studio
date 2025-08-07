@@ -1,8 +1,6 @@
 
 import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-
-const db = admin.firestore();
+import { db, messaging } from './common'; // Use shared admin instance
 
 /**
  * Calculates the Haversine distance between two points on the Earth.
@@ -97,7 +95,7 @@ export const notifyDriverOnRideRequest = async (
       }
     };
 
-    await admin.messaging().send(message);
+    await messaging.send(message);
     functions.logger.log(`Successfully sent notification to driver ${nearestDriver.id}.`);
 
     // 5. Update the ride document with the notified driver's ID
