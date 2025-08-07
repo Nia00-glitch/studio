@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, Shield, Mic, CheckCircle, WifiOff, AlertTriangle, LogOut, Loader2, Car, MapPin } from "lucide-react";
+import { Settings, Shield, Mic, CheckCircle, WifiOff, AlertTriangle, LogOut, Loader2, Car, MapPin, Search } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -12,8 +12,9 @@ import { NIAIcon } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, DocumentData } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
 import {
@@ -47,6 +48,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
+
+  // State for ride request
+  const [destination, setDestination] = useState("");
+  const [isRequesting, setIsRequesting] = useState(false);
+
 
   // Function to handle driver going online/offline
   const handleDriverStatusChange = async (isOnline: boolean) => {
@@ -119,6 +125,41 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       return () => unsubscribe();
     }
   }, [role]);
+
+
+  const handleRequestRide = async () => {
+    if (!user || !location || !destination) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Please ensure location is enabled and a destination is set.'});
+      return;
+    }
+
+    setIsRequesting(true);
+    toast({ title: "Requesting Ride...", description: "Finding a driver near you." });
+
+    try {
+      await addDoc(collection(db, "rides"), {
+        riderId: user.uid,
+        pickupLocation: {
+          latitude: location.lat,
+          longitude: location.lng,
+        },
+        destinationAddress: destination, // In a real app, you'd geocode this to lat/lng
+        status: "pending",
+        requestedAt: serverTimestamp(),
+      });
+
+      // UI would now transition to a "waiting for driver" state.
+      // For now, we just show a success message.
+      toast({ title: "Ride Requested!", description: "We are connecting you with a nearby driver." });
+      setDestination("");
+    } catch (error) {
+      console.error("Error requesting ride: ", error);
+      toast({ variant: "destructive", title: "Request Failed", description: "Could not request a ride at this time." });
+    } finally {
+      setIsRequesting(false);
+    }
+  }
+
 
   // Cleanup effect
   useEffect(() => {
@@ -212,8 +253,28 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             )}
 
             {role === 'rider' && (
-                <div className="text-center">
-                    <Button size="lg" className="w-full max-w-sm text-lg py-6">Request a Ride</Button>
+                <div className="text-center space-y-4">
+                     <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input
+                            type="text"
+                            placeholder="Where to?"
+                            className="w-full max-w-sm pl-10 pr-4 py-6 text-lg"
+                            value={destination}
+                            onChange={(e) => setDestination(e.target.value)}
+                        />
+                    </div>
+
+                    <Button 
+                        size="lg" 
+                        className="w-full max-w-sm text-lg py-6"
+                        onClick={handleRequestRide}
+                        disabled={!destination || isRequesting}
+                    >
+                        {isRequesting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+                        Confirm Ride
+                    </Button>
+
                      <div className="mt-4 flex items-center justify-center gap-2 text-muted-foreground">
                         <Mic className="h-5 w-5 text-accent animate-pulse" />
                         <span>Say "NIA help" for emergencies</span>
