@@ -43,9 +43,9 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const [isOnlineAsDriver, setIsOnlineAsDriver] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
+  const locationWatcherRef = useRef<number | null>(null);
 
+  const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
   const [destination, setDestination] = useState("");
   const [isRequesting, setIsRequesting] = useState(false);
 
@@ -55,36 +55,74 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const [pendingRideForDriver, setPendingRideForDriver] = useState<any>(null);
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
+  
+  // Real-time location watching effect
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    const handleSuccess = (position: GeolocationPosition) => {
+      const { latitude, longitude } = position.coords;
+      const newLocation = { lat: latitude, lng: longitude };
+      setLocation(newLocation);
+      setLocationError(null);
+
+      // If driver is online, broadcast location
+      if (isOnlineAsDriver) {
+        updateDriverLocation(latitude, longitude);
+      }
+    };
+
+    const handleError = (error: GeolocationPositionError) => {
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          setLocationError("Location permission denied. Please enable it in your browser settings to use the app.");
+          break;
+        case error.POSITION_UNAVAILABLE:
+          setLocationError("Location information is unavailable.");
+          break;
+        case error.TIMEOUT:
+          setLocationError("The request to get user location timed out.");
+          break;
+        default:
+          setLocationError("An unknown error occurred while fetching location.");
+          break;
+      }
+    };
+
+    // Use high accuracy for drivers, standard for riders
+    const options = {
+      enableHighAccuracy: role === 'driver',
+      timeout: 10000,
+      maximumAge: 0,
+    };
+
+    locationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
+
+    // Cleanup watcher on component unmount
+    return () => {
+      if (locationWatcherRef.current !== null) {
+        navigator.geolocation.clearWatch(locationWatcherRef.current);
+      }
+    };
+  }, [role, isOnlineAsDriver]); // Rerun if role or driver's online status changes
+
 
   const handleDriverStatusChange = async (isOnline: boolean) => {
-    if (!user) return;
+    if (!user || !location) {
+        toast({variant: 'destructive', title: 'Location not available', description: 'Cannot go online without a valid location.'});
+        return;
+    };
     setIsOnlineAsDriver(isOnline);
 
     if (isOnline) {
       toast({ title: "Going online..." });
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation({ lat: latitude, lng: longitude });
-          await updateDriverLocation(latitude, longitude);
-          
-          if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
-          locationIntervalRef.current = setInterval(() => {
-            navigator.geolocation.getCurrentPosition(pos => {
-                updateDriverLocation(pos.coords.latitude, pos.coords.longitude);
-            });
-          }, 10000); // 10 seconds
-          toast({ title: "You are online!", description: "Your location is now visible." });
-        },
-        (error) => {
-          setLocationError("Location permission denied. Please enable it in your browser settings.");
-          setIsOnlineAsDriver(false);
-        }
-      );
+      await updateDriverLocation(location.lat, location.lng);
+      toast({ title: "You are online!", description: "Your location is now visible." });
     } else {
       toast({ title: "Going offline..." });
-      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
-      locationIntervalRef.current = null;
       await deleteDoc(doc(db, "driver_locations", user.uid));
       toast({ title: "You are offline." });
     }
@@ -100,18 +138,8 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     }, { merge: true });
   };
   
-  // Effect for fetching user location and listening for data based on role
+  // Effect for fetching nearby drivers (for rider)
   useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-        setLocationError(null);
-      },
-      () => {
-        setLocationError("Could not get your location. Please enable location services.");
-      }
-    );
-      
     if (role === 'rider') {
       const q = query(collection(db, "driver_locations"));
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -257,8 +285,8 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
   useEffect(() => {
     return () => {
-      if (locationIntervalRef.current) {
-        clearInterval(locationIntervalRef.current);
+      if (locationWatcherRef.current !== null) {
+        navigator.geolocation.clearWatch(locationWatcherRef.current);
       }
       if (unsubscribeRideRef.current) unsubscribeRideRef.current();
       if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current();
