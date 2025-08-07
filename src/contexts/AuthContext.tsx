@@ -112,11 +112,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
+    // 1. Guard clause: Ensure user and profile exist.
     if (!user) throw new Error("No user logged in to update role for.");
     if (!userProfile) throw new Error("User profile not loaded yet.");
 
     const userDocRef = doc(db, 'users', user.uid);
+    
+    // 2. Update the document in Firestore.
     await updateDoc(userDocRef, { role: newRole });
+    
+    // 3. Update the local state immediately for a responsive UI.
     setUserProfile({ ...userProfile, role: newRole });
   };
   

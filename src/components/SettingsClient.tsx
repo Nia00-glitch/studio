@@ -96,23 +96,35 @@ export default function SettingsClient() {
   };
 
   const handleRoleChange = async (newRole: 'rider' | 'driver') => {
-    if (!userProfile || userProfile.role === newRole) return;
+    // Step 1: Prevent changes if the role is already the selected one or if a switch is in progress.
+    if (!userProfile || userProfile.role === newRole || isSwitchingRole) return;
+    
+    // Step 2: Set loading state to disable UI and provide feedback.
     setIsSwitchingRole(true);
+
     try {
+      // Step 3: Call the centralized `updateRole` function from AuthContext.
+      // This function handles the Firestore update and local state sync.
       await updateRole(newRole);
+
+      // Step 4: On success, show a confirmation toast.
       toast({
         title: "Role Switched!",
-        description: `You are now in ${newRole} mode.`,
+        description: `You are now in ${newRole} mode. Redirecting...`,
       });
-      // Redirect to the correct dashboard after switching
+
+      // Step 5: Redirect to the correct dashboard based on the new role.
       router.replace(newRole === 'driver' ? '/driver-home' : '/rider-home');
+
     } catch (error: any) {
+      // Step 6 (Edge Case): If the Firestore update fails, show an error toast.
       toast({
         variant: 'destructive',
         title: "Error switching role",
         description: error.message,
       });
     } finally {
+      // Step 7: Reset the loading state regardless of outcome.
       setIsSwitchingRole(false);
     }
   };
@@ -135,7 +147,7 @@ export default function SettingsClient() {
               </div>
             ) : (
               <RadioGroup
-                defaultValue={userProfile?.role}
+                value={userProfile?.role}
                 onValueChange={(value: 'rider' | 'driver') => handleRoleChange(value)}
                 className="grid grid-cols-2 gap-4"
                 disabled={isSwitchingRole}
