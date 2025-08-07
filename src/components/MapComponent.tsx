@@ -1,8 +1,9 @@
 
 "use client";
 import React from 'react';
-import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from '@react-google-maps/api';
-import { Loader2, Car } from 'lucide-react';
+import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api';
+import { Loader2 } from 'lucide-react';
+import { NIAIcon } from './icons';
 
 const containerStyle = {
   width: '100%',
@@ -56,6 +57,15 @@ function MapComponent({ center, drivers = [], role }: MapComponentProps) {
   if (!isLoaded) {
     return <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
+  
+  // Custom icon for drivers
+  const driverIcon = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF4136" width="48px" height="48px"><path d="M0 0h24v24H0z" fill="none"/><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11C5.84 5 5.28 5.42 5.08 6.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5S18.33 16 17.5 16zM5 11l1.5-4.5h11L19 11H5z"/></svg>'
+    ),
+    scaledSize: new window.google.maps.Size(40, 40),
+    anchor: new window.google.maps.Point(20, 20),
+  };
 
   return (
     <GoogleMap
@@ -64,42 +74,31 @@ function MapComponent({ center, drivers = [], role }: MapComponentProps) {
       zoom={15}
       options={mapOptions}
     >
-      {role === 'rider' && (
-        <>
-            <MarkerF position={center} title="Your Location" />
-            {drivers.map(driver => (
-                <MarkerF 
-                    key={driver.driver_id} 
-                    position={{ lat: driver.latitude, lng: driver.longitude }} 
-                    title="Driver"
-                    icon={{
-                      path: 'M-1.54,21.57C-1.54,21.57,2.23,19.2,2.23,12.9s-2.91-10.7-5-10.7-5,4.45-5,10.7S-1.54,21.57-1.54,21.57Z',
-                      fillColor: '#FF4136', // primary color
-                      fillOpacity: 1,
-                      strokeWeight: 1,
-                      strokeColor: '#FFFFFF',
-                      scale: 1.5,
-                      anchor: new google.maps.Point(0, 22)
-                    }}
-                />
-            ))}
-        </>
-      )}
-
-      {role === 'driver' && (
-         <MarkerF 
+        {/* Rider/User's own location marker */}
+        <MarkerF 
             position={center} 
-            title="Your Current Location"
-             icon={{
+            title={role === 'rider' ? "Your Location" : "My Location"}
+            icon={{
                 path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 10,
-                fillColor: "#4285F4",
+                scale: 8,
+                fillColor: "#4285F4", // A distinct blue for the user
                 fillOpacity: 1,
                 strokeWeight: 2,
                 strokeColor: "white",
             }}
-         />
-      )}
+            zIndex={10} // Ensure user's marker is on top
+        />
+        
+        {/* Render driver markers (only for riders) */}
+        {role === 'rider' && drivers.map(driver => (
+            <MarkerF 
+                key={driver.driver_id} 
+                position={{ lat: driver.latitude, lng: driver.longitude }} 
+                title="Driver"
+                icon={driverIcon}
+            />
+        ))}
+
     </GoogleMap>
   );
 }

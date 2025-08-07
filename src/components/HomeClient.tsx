@@ -1,9 +1,9 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Settings, Shield, Mic, CheckCircle, WifiOff, AlertTriangle, LogOut, Loader2, Car, MapPin, Search } from "lucide-react";
+import { Settings, Shield, Mic, WifiOff, AlertTriangle, LogOut, Loader2, Search, Car, User, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -13,8 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, DocumentData } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, getDocs, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
 import {
@@ -29,53 +30,51 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Dynamically import the MapComponent to avoid SSR issues with the Google Maps API
 const MapComponent = dynamic(() => import('@/components/MapComponent'), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>,
 });
 
-
-// This component will contain the UI for both Rider and Driver homes
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
   const { logout, user, userProfile } = useAuth();
   const { toast } = useToast();
   
-  // State for map and location
   const [isOnlineAsDriver, setIsOnlineAsDriver] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
 
-  // State for ride request
   const [destination, setDestination] = useState("");
   const [isRequesting, setIsRequesting] = useState(false);
 
+  // State for active ride tracking
+  const [activeRide, setActiveRide] = useState<any>(null);
+  const [rideId, setRideId] = useState<string | null>(null);
+  const [pendingRideForDriver, setPendingRideForDriver] = useState<any>(null);
+  const unsubscribeRideRef = useRef<(() => void) | null>(null);
+  const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
 
-  // Function to handle driver going online/offline
   const handleDriverStatusChange = async (isOnline: boolean) => {
     if (!user) return;
     setIsOnlineAsDriver(isOnline);
 
     if (isOnline) {
       toast({ title: "Going online..." });
-      // Get initial location
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
           setLocation({ lat: latitude, lng: longitude });
           await updateDriverLocation(latitude, longitude);
           
-          // Start interval to update location
           if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
           locationIntervalRef.current = setInterval(() => {
             navigator.geolocation.getCurrentPosition(pos => {
                 updateDriverLocation(pos.coords.latitude, pos.coords.longitude);
             });
           }, 10000); // 10 seconds
-          toast({ title: "You are online!", description: "Your location is now visible to nearby riders." });
+          toast({ title: "You are online!", description: "Your location is now visible." });
         },
         (error) => {
           setLocationError("Location permission denied. Please enable it in your browser settings.");
@@ -98,22 +97,22 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       latitude: lat,
       longitude: lng,
       timestamp: serverTimestamp(),
-    });
+    }, { merge: true });
   };
-
-  // Effect for rider to get their location and watch for drivers
+  
+  // Effect for fetching user location and listening for data based on role
   useEffect(() => {
-    if (role === 'rider') {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setLocationError(null);
-        },
-        () => {
-          setLocationError("Could not get your location. Please enable location services.");
-        }
-      );
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setLocationError(null);
+      },
+      () => {
+        setLocationError("Could not get your location. Please enable location services.");
+      }
+    );
       
+    if (role === 'rider') {
       const q = query(collection(db, "driver_locations"));
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const driversData: any[] = [];
@@ -126,6 +125,64 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     }
   }, [role]);
 
+  // Effect to listen for ride updates (for both rider and driver)
+  useEffect(() => {
+    if (rideId) {
+      const rideDocRef = doc(db, "rides", rideId);
+      unsubscribeRideRef.current = onSnapshot(rideDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const rideData = { id: docSnap.id, ...docSnap.data() };
+          setActiveRide(rideData);
+          if (rideData.status === 'pending' && role === 'rider') {
+              setIsRequesting(true); // Keep UI in requesting state
+          } else {
+              setIsRequesting(false);
+          }
+        } else {
+          setActiveRide(null);
+          setRideId(null);
+        }
+      });
+    } else {
+        if (unsubscribeRideRef.current) {
+            unsubscribeRideRef.current();
+            unsubscribeRideRef.current = null;
+        }
+    }
+    return () => {
+        if (unsubscribeRideRef.current) {
+            unsubscribeRideRef.current();
+        }
+    };
+  }, [rideId, role]);
+
+  // Effect for DRIVER to listen for new PENDING rides
+  useEffect(() => {
+      if (role === 'driver' && isOnlineAsDriver && !activeRide) {
+          const q = query(collection(db, "rides"), where("status", "==", "pending"), limit(1));
+          unsubscribePendingRideRef.current = onSnapshot(q, (snapshot) => {
+              if (!snapshot.empty) {
+                  const rideDoc = snapshot.docs[0];
+                  setPendingRideForDriver({ id: rideDoc.id, ...rideDoc.data() });
+              } else {
+                  setPendingRideForDriver(null);
+              }
+          });
+      } else {
+          if (unsubscribePendingRideRef.current) {
+              unsubscribePendingRideRef.current();
+              unsubscribePendingRideRef.current = null;
+          }
+          setPendingRideForDriver(null);
+      }
+
+      return () => {
+          if (unsubscribePendingRideRef.current) {
+              unsubscribePendingRideRef.current();
+          }
+      }
+  }, [role, isOnlineAsDriver, activeRide]);
+
 
   const handleRequestRide = async () => {
     if (!user || !location || !destination) {
@@ -137,41 +194,78 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     toast({ title: "Requesting Ride...", description: "Finding a driver near you." });
 
     try {
-      await addDoc(collection(db, "rides"), {
+      const rideDocRef = await addDoc(collection(db, "rides"), {
         riderId: user.uid,
+        riderName: userProfile?.name || "Unknown Rider",
         pickupLocation: {
           latitude: location.lat,
           longitude: location.lng,
         },
-        destinationAddress: destination, // In a real app, you'd geocode this to lat/lng
-        status: "pending",
+        destinationAddress: destination,
+        status: "pending", // pending, accepted, in-progress, completed, cancelled
         requestedAt: serverTimestamp(),
       });
-
-      // UI would now transition to a "waiting for driver" state.
-      // For now, we just show a success message.
-      toast({ title: "Ride Requested!", description: "We are connecting you with a nearby driver." });
+      setRideId(rideDocRef.id);
       setDestination("");
     } catch (error) {
       console.error("Error requesting ride: ", error);
       toast({ variant: "destructive", title: "Request Failed", description: "Could not request a ride at this time." });
-    } finally {
       setIsRequesting(false);
     }
   }
 
+  const handleRideDecision = async (rideId: string, decision: 'accepted' | 'declined') => {
+      if (!user) return;
+      const rideDocRef = doc(db, "rides", rideId);
+      if (decision === 'accepted') {
+          try {
+              await updateDoc(rideDocRef, {
+                  status: 'accepted',
+                  driverId: user.uid,
+                  driverName: userProfile?.name || 'Unknown Driver',
+              });
+              setRideId(rideId);
+              setPendingRideForDriver(null); // Stop listening for other rides
+              toast({ title: "Ride Accepted!", description: "Please proceed to the pickup location." });
+          } catch (error) {
+              toast({ variant: 'destructive', title: "Error", description: "Could not accept the ride. It may have been taken." });
+          }
+      } else {
+          // For now, "declining" just means the driver ignores it.
+          // In a real app, you might add a "declinedBy" field to the ride.
+          setPendingRideForDriver(null);
+      }
+  };
 
-  // Cleanup effect
+  const handleCompleteRide = async () => {
+      if (!rideId) return;
+      await updateDoc(doc(db, "rides", rideId), { status: 'completed' });
+      // Reset state for next ride
+      setRideId(null);
+      setActiveRide(null);
+      toast({ title: "Ride Completed!", description: "Thank you for using Safety Rides Connect." });
+  };
+  
+  const handleCancelRide = async () => {
+      if (!rideId) return;
+      await updateDoc(doc(db, "rides", rideId), { status: 'cancelled' });
+      setRideId(null);
+      setActiveRide(null);
+      toast({ title: "Ride Cancelled" });
+  };
+
+
   useEffect(() => {
     return () => {
       if (locationIntervalRef.current) {
         clearInterval(locationIntervalRef.current);
       }
+      if (unsubscribeRideRef.current) unsubscribeRideRef.current();
+      if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current();
     };
   }, []);
 
   const handleActivateEmergency = () => {
-    console.log("Emergency mode activated by button.");
     toast({
       title: "Emergency Mode Activated",
       description: "Activating safety protocols.",
@@ -182,6 +276,89 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   if (isEmergencyActive) {
     return <EmergencyScreen />;
   }
+  
+  const renderRiderStatus = () => {
+    if (!activeRide) return null;
+    let statusText = "";
+    let statusIcon = <Loader2 className="h-5 w-5 animate-spin" />;
+    
+    switch(activeRide.status) {
+        case 'pending':
+            statusText = "Finding a driver...";
+            break;
+        case 'accepted':
+            statusText = `${activeRide.driverName} is on their way!`;
+            statusIcon = <Car className="h-5 w-5 text-green-500" />;
+            break;
+        case 'in-progress':
+            statusText = `On your way to the destination.`;
+            statusIcon = <Car className="h-5 w-5 text-blue-500" />;
+            break;
+        case 'completed':
+            statusText = "Ride completed. Thank you!";
+            statusIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
+            return null; // Don't show the card once completed.
+        case 'cancelled':
+            statusText = "Your ride has been cancelled.";
+            statusIcon = <XCircle className="h-5 w-5 text-red-500" />;
+            return null; // Don't show the card once cancelled.
+        default:
+             return null;
+    }
+
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3">
+            {statusIcon}
+            <span>{statusText}</span>
+          </CardTitle>
+          <CardDescription>
+            {activeRide.status === 'accepted' ? 'Your driver will arrive shortly.' : 'Please wait while we connect you.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Button variant="destructive" className="w-full" onClick={handleCancelRide}>Cancel Ride</Button>
+        </CardContent>
+      </Card>
+    )
+  };
+  
+  const renderDriverStatus = () => {
+      if (!activeRide) return null;
+
+      let statusText = "";
+      let statusIcon = <Car className="h-5 w-5" />;
+      let description = `Pickup: ${activeRide.riderName}. Destination: ${activeRide.destinationAddress}`;
+      let actionButton = null;
+
+      switch(activeRide.status) {
+          case 'accepted':
+              statusText = "Ride Accepted";
+              statusIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
+              actionButton = <Button className="w-full" onClick={() => updateDoc(doc(db, "rides", activeRide.id), { status: 'in-progress' })}>Start Ride</Button>;
+              break;
+          case 'in-progress':
+              statusText = "Ride In Progress";
+              statusIcon = <Clock className="h-5 w-5 text-blue-500 animate-pulse" />;
+              actionButton = <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleCompleteRide}>Complete Ride</Button>;
+              break;
+          default:
+              return null; // No card for pending, completed, etc. on driver side for now
+      }
+
+      return (
+        <Card className="w-full max-w-sm">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-3">{statusIcon} {statusText}</CardTitle>
+                <CardDescription>{description}</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {actionButton}
+            </CardContent>
+        </Card>
+      )
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -224,35 +401,59 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       <footer className="p-4 border-t bg-background shadow-lg z-10">
         <div className="container mx-auto max-w-4xl">
             {role === 'driver' && (
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                        <Switch id="online-status" checked={isOnlineAsDriver} onCheckedChange={handleDriverStatusChange} />
-                        <Label htmlFor="online-status" className="text-lg font-bold">{isOnlineAsDriver ? "You are Online" : "You are Offline"}</Label>
-                    </div>
-                     <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button size="lg" className="gap-2 bg-primary/90 hover:bg-primary text-primary-foreground rounded-full px-8 text-lg">
-                                <Shield className="h-6 w-6" />
-                                Manual Activation
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>This will immediately notify your emergency contacts and activate safety protocols.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleActivateEmergency} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                <AlertTriangle className="mr-2 h-4 w-4" /> Activate
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
+                <div>
+                  {!activeRide && pendingRideForDriver && (
+                      <Card className="mb-4 bg-accent/20 border-accent">
+                          <CardHeader>
+                              <CardTitle>Incoming Ride Request!</CardTitle>
+                              <CardDescription>From: {pendingRideForDriver.riderName}. To: {pendingRideForDriver.destinationAddress}</CardDescription>
+                          </CardHeader>
+                          <CardContent className="flex gap-4">
+                              <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => handleRideDecision(pendingRideForDriver.id, 'accepted')}>
+                                  <CheckCircle className="mr-2" /> Accept
+                              </Button>
+                              <Button variant="destructive" className="w-full" onClick={() => handleRideDecision(pendingRideForDriver.id, 'declined')}>
+                                  <XCircle className="mr-2" /> Decline
+                              </Button>
+                          </CardContent>
+                      </Card>
+                  )}
+
+                  {!activeRide && !pendingRideForDriver && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                          <Switch id="online-status" checked={isOnlineAsDriver} onCheckedChange={handleDriverStatusChange} />
+                          <Label htmlFor="online-status" className="text-lg font-bold">{isOnlineAsDriver ? "You are Online" : "You are Offline"}</Label>
+                      </div>
+                       <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                              <Button size="lg" className="gap-2 bg-primary/90 hover:bg-primary text-primary-foreground rounded-full px-8 text-lg">
+                                  <Shield className="h-6 w-6" />
+                                  Manual Activation
+                              </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                              <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>This will immediately notify your emergency contacts and activate safety protocols.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleActivateEmergency} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  <AlertTriangle className="mr-2 h-4 w-4" /> Activate
+                              </AlertDialogAction>
+                              </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
+                  </div>
+                  )}
+
+                  {activeRide && renderDriverStatus()}
                 </div>
             )}
 
             {role === 'rider' && (
+              activeRide ? renderRiderStatus() : (
                 <div className="text-center space-y-4">
                      <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -272,7 +473,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                         disabled={!destination || isRequesting}
                     >
                         {isRequesting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                        Confirm Ride
+                        {isRequesting ? 'Requesting...' : 'Confirm Ride'}
                     </Button>
 
                      <div className="mt-4 flex items-center justify-center gap-2 text-muted-foreground">
@@ -280,6 +481,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                         <span>Say "NIA help" for emergencies</span>
                     </div>
                 </div>
+              )
             )}
         </div>
       </footer>
