@@ -4,22 +4,73 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { auth, db, app } from '@/lib/firebase';
 import type { UserProfile } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { NIAIcon } from '@/components/icons';
+import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => void;
-  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt'>) => Promise<void>;
+  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt' | 'fcmToken'>) => Promise<void>;
   updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Helper function to handle FCM token logic
+const setupFCM = async (user: User, toast: (options: any) => void) => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    console.log("FCM not supported in this environment.");
+    return;
+  }
+  try {
+    const messaging = getMessaging(app);
+
+    // 1. Request permission
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      console.log('Notification permission granted.');
+      
+      // 2. Get token
+      const fcmToken = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY });
+      
+      if (fcmToken) {
+        console.log('FCM Token:', fcmToken);
+        
+        // 3. Persist token to Firestore
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, {
+          fcmToken: fcmToken,
+          updatedAt: serverTimestamp()
+        });
+        console.log('FCM token saved to Firestore.');
+      } else {
+        console.warn('No registration token available. Request permission to generate one.');
+      }
+    } else {
+      console.warn('Notification permission denied.');
+    }
+    
+    // 4. Handle foreground messages
+    onMessage(messaging, (payload) => {
+      console.log('Foreground message received. ', payload);
+      toast({
+        title: payload.notification?.title || "New Notification",
+        description: payload.notification?.body || "",
+      });
+    });
+
+  } catch (error) {
+    console.error('An error occurred while setting up FCM.', error);
+  }
+};
+
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -27,6 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
 
   // This effect runs once on mount to ensure Firestore persistence is enabled
   // before any other operations can take place. This is the key to fixing the
@@ -64,6 +116,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
+        
+        // Setup FCM for the logged-in user
+        setupFCM(user, toast);
+        
         const userDocRef = doc(db, 'users', user.uid);
         
         // PERF: Use onSnapshot for real-time profile updates (like role changes)
@@ -93,7 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribeAuth();
-  }, [isFirebaseReady]);
+  }, [isFirebaseReady, toast]);
 
   const logout = async () => {
     setLoading(true);
@@ -104,7 +160,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt'>) => {
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt' | 'fcmToken'>) => {
     if (!user) throw new Error("No user logged in to create a profile for.");
     
     setLoading(true);

@@ -16,12 +16,14 @@ export interface Settings {
 // User Profile for Firestore
 export interface UserProfile {
   uid: string;
-  name: string;
+  name:string;
   phoneNumber: string;
   role: 'rider' | 'driver';
   emergencyContact?: string;
   vehicleInfo?: string;
+  fcmToken?: string; // Added for push notifications
   createdAt: any; // Firestore ServerTimestamp
+  updatedAt?: any;
 }
 
 
