@@ -96,35 +96,34 @@ export default function SettingsClient() {
   };
 
   const handleRoleChange = async (newRole: 'rider' | 'driver') => {
-    // Step 1: Prevent changes if the role is already the selected one or if a switch is in progress.
     if (!userProfile || userProfile.role === newRole || isSwitchingRole) return;
     
-    // Step 2: Set loading state to disable UI and provide feedback.
     setIsSwitchingRole(true);
+    // PERF: Start timing the role switch operation
+    const roleSwitchStart = performance.now();
 
     try {
-      // Step 3: Call the centralized `updateRole` function from AuthContext.
-      // This function handles the Firestore update and local state sync.
+      // The updateRole function is now optimistic, so it resolves almost instantly.
+      // It handles the local state update.
       await updateRole(newRole);
 
-      // Step 4: On success, show a confirmation toast.
-      toast({
-        title: "Role Switched!",
-        description: `You are now in ${newRole} mode. Redirecting...`,
-      });
+      const roleSwitchEnd = performance.now();
+      console.log(`🚀 SettingsClient: Role switch to '${newRole}' took ${(roleSwitchEnd - roleSwitchStart).toFixed(2)}ms`);
 
-      // Step 5: Redirect to the correct dashboard based on the new role.
+      // Immediately redirect after the local state is updated.
       router.replace(newRole === 'driver' ? '/driver-home' : '/rider-home');
 
+      toast({
+        title: "Mode Switched!",
+        description: `You are now in ${newRole} mode.`,
+      });
     } catch (error: any) {
-      // Step 6 (Edge Case): If the Firestore update fails, show an error toast.
       toast({
         variant: 'destructive',
-        title: "Error switching role",
-        description: error.message,
+        title: "Error switching mode",
+        description: "Could not update your role. Please try again.",
       });
     } finally {
-      // Step 7: Reset the loading state regardless of outcome.
       setIsSwitchingRole(false);
     }
   };

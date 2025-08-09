@@ -103,4 +103,7 @@ function MapComponent({ center, drivers = [], role }: MapComponentProps) {
   );
 }
 
+// PERF FIX: Memoize the MapComponent to prevent it from re-rendering
+// when its parent component's state changes for reasons unrelated to the map.
+// This is a critical optimization for apps with maps.
 export default React.memo(MapComponent);

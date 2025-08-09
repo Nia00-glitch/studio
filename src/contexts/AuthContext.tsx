@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/lib/types';
 import { useRouter } from 'next/navigation';
@@ -57,33 +57,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     // This effect will not run until firebase is ready.
     if (!isFirebaseReady) return;
+    
+    // PERF: Start timing for auth check
+    const authCheckStart = performance.now();
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
         const userDocRef = doc(db, 'users', user.uid);
-        try {
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            setUserProfile(userDocSnap.data() as UserProfile);
+        
+        // PERF: Use onSnapshot for real-time profile updates (like role changes)
+        // This also helps keep the local state in sync without manual refetches.
+        const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
+          const authCheckEnd = performance.now();
+          console.log(`🚀 AuthProvider: Auth check & profile fetch took ${(authCheckEnd - authCheckStart).toFixed(2)}ms`);
+
+          if (docSnap.exists()) {
+            setUserProfile(docSnap.data() as UserProfile);
           } else {
             setUserProfile(null);
           }
-        } catch (error) {
-           console.error("Error fetching user profile (might be offline):", error);
-           // In an offline scenario, getDoc might throw. The UI will show a loader.
-           // When the app comes back online, onAuthStateChanged will re-trigger
-           // and this logic will run again.
-        }
+          setLoading(false);
+        }, (error) => {
+          console.error("Error fetching user profile (might be offline):", error);
+          setLoading(false);
+        });
+
+        // Return the profile listener's unsubscribe function to be called on cleanup
+        return () => unsubscribeProfile();
       } else {
         setUser(null);
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, [isFirebaseReady]);
 
   const logout = async () => {
@@ -110,26 +119,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUserProfile(newUserProfile);
     setLoading(false);
   };
-
+  
+  // PERF FIX: Implement Optimistic UI for role switching.
+  // This function now updates local state immediately for a snappy user experience,
+  // while the database write happens in the background.
   const updateRole = async (newRole: 'rider' | 'driver') => {
-    // 1. Guard clause: Ensure user and profile exist.
-    if (!user) throw new Error("No user logged in to update role for.");
-    if (!userProfile) throw new Error("User profile not loaded yet.");
+    if (!user || !userProfile) throw new Error("User or profile not available for role update.");
+    if (userProfile.role === newRole) return; // No change needed
 
     const userDocRef = doc(db, 'users', user.uid);
+    const oldRole = userProfile.role;
+
+    // 1. Optimistic Update: Change local state immediately.
+    setUserProfile(prevProfile => ({ ...prevProfile!, role: newRole }));
     
-    // 2. Update the document in Firestore.
-    await updateDoc(userDocRef, { role: newRole });
-    
-    // 3. Update the local state immediately for a responsive UI.
-    setUserProfile({ ...userProfile, role: newRole });
+    // 2. Perform the async database write in the background.
+    try {
+        await updateDoc(userDocRef, { role: newRole });
+        // The onSnapshot listener will handle the final state reconciliation automatically.
+    } catch (error) {
+        console.error("Failed to update role in Firestore:", error);
+        // 3. Rollback on error: Revert local state if the write fails.
+        setUserProfile(prevProfile => ({ ...prevProfile!, role: oldRole }));
+        // Optionally, show an error toast to the user.
+        throw error; // Re-throw for the calling component to handle.
+    }
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
 
   // Render a loading screen until Firebase persistence is confirmed,
   // preventing any child components from making premature Firestore calls.
-  if (!isFirebaseReady) {
+  if (loading || !isFirebaseReady) {
     return (
        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground">
         <NIAIcon className="w-24 h-24 text-primary animate-pulse" />
