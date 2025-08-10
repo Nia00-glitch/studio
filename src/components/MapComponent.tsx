@@ -11,6 +11,9 @@ const containerStyle = {
   height: '100%',
 };
 
+// Define the required libraries for the Google Maps API
+const LIBRARIES: ('places' | 'directions')[] = ['places', 'directions'];
+
 const mapOptions = {
     disableDefaultUI: true,
     zoomControl: true,
@@ -45,12 +48,13 @@ interface MapComponentProps {
 }
 
 function MapComponent({ center, drivers = [], role, activeRide }: MapComponentProps) {
-  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-  
+  // Guard: Ensure the API key is available before attempting to load the script.
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey,
-    libraries: ['directions'],
+    googleMapsApiKey: googleMapsApiKey || "",
+    libraries: LIBRARIES,
   });
 
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
@@ -66,24 +70,28 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
         const directionsService = new window.google.maps.DirectionsService();
 
         let origin = driverLocation;
-        let destination = { lat: pickupLocation.latitude, lng: pickupLocation.longitude };
+        let destination: { lat: number, lng: number } | { query: string };
 
         if (status === 'in-progress') {
             origin = driverLocation;
+            // The destination for DirectionsService can be a string address
             destination = { query: destinationAddress };
+        } else { // 'accepted' status
+            origin = driverLocation;
+            destination = { lat: pickupLocation.latitude, lng: pickupLocation.longitude };
         }
 
         directionsService.route(
             {
                 origin: new window.google.maps.LatLng(origin.lat, origin.lng),
-                destination: destination.query ? destination.query : new window.google.maps.LatLng(destination.lat, destination.lng),
+                destination: 'query' in destination ? destination.query : new window.google.maps.LatLng(destination.lat, destination.lng),
                 travelMode: window.google.maps.TravelMode.DRIVING,
             },
             (result, status) => {
                 if (status === window.google.maps.DirectionsStatus.OK) {
                     setDirections(result);
                 } else {
-                    console.error(`error fetching directions ${result}`);
+                    console.error(`Error fetching directions: ${status}`, result);
                 }
             }
         );
@@ -91,6 +99,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
 
   // Effect to calculate and display the route for an active ride
   useEffect(() => {
+    // Ensure the route is calculated only when the driver's live location is available and the map is loaded.
     if (activeRide && activeRide.driverLive && map) {
       const { driverLive, pickupLocation, destinationAddress, status } = activeRide;
       calculateRoute(driverLive, pickupLocation, destinationAddress, status);
@@ -103,6 +112,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
       setMap(mapInstance);
   }, []);
 
+  // Show a clear error if the API key is missing in the environment.
   if (!googleMapsApiKey) {
     return (
       <div className="flex items-center justify-center h-full bg-destructive/10 text-destructive p-4 text-center">
@@ -115,14 +125,17 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
     );
   }
 
+  // Show an error if the script fails to load for any reason (e.g., referrer restrictions, network issues).
   if (loadError) {
-    return <div className="flex items-center justify-center h-full bg-destructive/10 text-destructive">Error loading maps. Please check your API key and network connection.</div>;
+    return <div className="flex items-center justify-center h-full bg-destructive/10 text-destructive p-4 text-center">Error loading maps. Check your API key restrictions and network connection.</div>;
   }
 
+  // Show a loading spinner while the script is loading.
   if (!isLoaded || !center) {
     return <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
+  // Define the driver icon only after the script is loaded to prevent runtime errors.
   const driverIcon = {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF4136" width="48px" height="48px"><path d="M0 0h24v24H0z" fill="none"/><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11C5.84 5 5.28 5.42 5.08 6.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5S18.33 16 17.5 16zM5 11l1.5-4.5h11L19 11H5z"/></svg>'
@@ -194,3 +207,5 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
 }
 
 export default React.memo(MapComponent);
+
+    
