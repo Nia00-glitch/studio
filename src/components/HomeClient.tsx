@@ -18,6 +18,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, getDocs, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
+import type { Ride } from "@/lib/types";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +37,8 @@ const MapComponent = dynamic(() => import('@/components/MapComponent'), {
   loading: () => <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>,
 });
 
+const LOCATION_STREAMING_INTERVAL = 5000; // 5 seconds
+
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
   const { logout, user, userProfile } = useAuth();
@@ -43,16 +47,16 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const [isOnlineAsDriver, setIsOnlineAsDriver] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const locationWatcherRef = useRef<number | null>(null);
+  const generalLocationWatcherRef = useRef<number | null>(null);
 
   const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
   const [destination, setDestination] = useState("");
   const [isRequesting, setIsRequesting] = useState(false);
 
   // State for active ride tracking
-  const [activeRide, setActiveRide] = useState<any>(null);
+  const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [rideId, setRideId] = useState<string | null>(null);
-  const [pendingRideForDriver, setPendingRideForDriver] = useState<any>(null);
+  const [pendingRideForDriver, setPendingRideForDriver] = useState<Ride | null>(null);
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
   
@@ -69,45 +73,91 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       setLocation(newLocation);
       setLocationError(null);
 
-      // If driver is online, broadcast location
-      if (isOnlineAsDriver) {
+      // If driver is online AND NOT in a ride, broadcast location globally
+      if (role === 'driver' && isOnlineAsDriver && !activeRide) {
         updateDriverLocation(latitude, longitude);
       }
     };
 
     const handleError = (error: GeolocationPositionError) => {
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          setLocationError("Location permission denied. Please enable it in your browser settings to use the app.");
-          break;
-        case error.POSITION_UNAVAILABLE:
-          setLocationError("Location information is unavailable.");
-          break;
-        case error.TIMEOUT:
-          setLocationError("The request to get user location timed out.");
-          break;
-        default:
-          setLocationError("An unknown error occurred while fetching location.");
-          break;
+      let message = "An unknown error occurred while fetching location.";
+      if (error.code === error.PERMISSION_DENIED) {
+        message = "Location permission denied. Please enable it in your browser settings to use the app.";
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        message = "Location information is unavailable.";
+      } else if (error.code === error.TIMEOUT) {
+        message = "The request to get user location timed out.";
       }
+      setLocationError(message);
+      toast({ variant: 'destructive', title: "Location Error", description: message });
     };
-
+    
     // Use high accuracy for drivers, standard for riders
-    const options = {
-      enableHighAccuracy: role === 'driver',
-      timeout: 10000,
-      maximumAge: 0,
-    };
+    const options = { enableHighAccuracy: role === 'driver', timeout: 10000, maximumAge: 0 };
+    generalLocationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
 
-    locationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
-
-    // Cleanup watcher on component unmount
     return () => {
-      if (locationWatcherRef.current !== null) {
-        navigator.geolocation.clearWatch(locationWatcherRef.current);
+      if (generalLocationWatcherRef.current !== null) {
+        navigator.geolocation.clearWatch(generalLocationWatcherRef.current);
       }
     };
-  }, [role, isOnlineAsDriver]); // Rerun if role or driver's online status changes
+  }, [role, isOnlineAsDriver, activeRide, toast]);
+
+
+  // Effect for streaming DRIVER'S location to an ACTIVE RIDE document
+  useEffect(() => {
+    let watcherId: number | null = null;
+    let lastUpdateTime = 0;
+
+    // Only run this effect if you are a driver with an active ride that is 'accepted' or 'in-progress'
+    if (role === 'driver' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
+      const rideDocRef = doc(db, "rides", activeRide.id);
+
+      const handleSuccess = (position: GeolocationPosition) => {
+        const now = Date.now();
+        // Throttle Firestore writes to avoid excessive usage
+        if (now - lastUpdateTime < LOCATION_STREAMING_INTERVAL) {
+          return;
+        }
+        lastUpdateTime = now;
+        
+        const { latitude, longitude, heading } = position.coords;
+        const driverLocationUpdate = {
+            'driverLive.lat': latitude,
+            'driverLive.lng': longitude,
+            'driverLive.heading': heading ?? null,
+            'driverLive.updatedAt': serverTimestamp(),
+        };
+        
+        updateDoc(rideDocRef, driverLocationUpdate).catch(err => console.error("Failed to update driver live location", err));
+      };
+
+      const handleError = (error: GeolocationPositionError) => {
+        console.error("Error watching position for active ride:", error.message);
+        toast({ variant: 'destructive', title: "Location Stream Error", description: "Could not stream your location for the ride."});
+      };
+      
+      watcherId = navigator.geolocation.watchPosition(handleSuccess, handleError, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+      });
+
+      console.log(`Driver streaming location for ride ${activeRide.id} with watcher ID ${watcherId}`);
+
+      // Stop broadcasting to global `driver_locations`
+      if (user) {
+        deleteDoc(doc(db, "driver_locations", user.uid));
+      }
+    }
+    
+    // Cleanup function: this runs when the dependencies change OR the component unmounts.
+    return () => {
+      if (watcherId !== null) {
+        navigator.geolocation.clearWatch(watcherId);
+        console.log(`Stopped streaming location for ride, cleared watcher ID ${watcherId}`);
+      }
+    };
+  }, [role, activeRide, user, toast]);
 
 
   const handleDriverStatusChange = async (isOnline: boolean) => {
@@ -159,7 +209,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       const rideDocRef = doc(db, "rides", rideId);
       unsubscribeRideRef.current = onSnapshot(rideDocRef, (docSnap) => {
         if (docSnap.exists()) {
-          const rideData = { id: docSnap.id, ...docSnap.data() };
+          const rideData = { id: docSnap.id, ...docSnap.data() } as Ride;
           setActiveRide(rideData);
           if (rideData.status === 'pending' && role === 'rider') {
               setIsRequesting(true); // Keep UI in requesting state
@@ -187,11 +237,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   // Effect for DRIVER to listen for new PENDING rides
   useEffect(() => {
       if (role === 'driver' && isOnlineAsDriver && !activeRide) {
-          const q = query(collection(db, "rides"), where("status", "==", "pending"), limit(1));
+          const q = query(collection(db, "rides"), where("notifiedDriverId", "==", user?.uid), where("status", "==", "pending"), limit(1));
           unsubscribePendingRideRef.current = onSnapshot(q, (snapshot) => {
               if (!snapshot.empty) {
                   const rideDoc = snapshot.docs[0];
-                  setPendingRideForDriver({ id: rideDoc.id, ...rideDoc.data() });
+                  setPendingRideForDriver({ id: rideDoc.id, ...rideDoc.data() } as Ride);
               } else {
                   setPendingRideForDriver(null);
               }
@@ -209,7 +259,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
               unsubscribePendingRideRef.current();
           }
       }
-  }, [role, isOnlineAsDriver, activeRide]);
+  }, [role, isOnlineAsDriver, activeRide, user]);
 
 
   const handleRequestRide = async () => {
@@ -251,6 +301,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                   status: 'accepted',
                   driverId: user.uid,
                   driverName: userProfile?.name || 'Unknown Driver',
+                  acceptedAt: serverTimestamp(),
               });
               setRideId(rideId);
               setPendingRideForDriver(null); // Stop listening for other rides
@@ -259,15 +310,14 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
               toast({ variant: 'destructive', title: "Error", description: "Could not accept the ride. It may have been taken." });
           }
       } else {
-          // For now, "declining" just means the driver ignores it.
-          // In a real app, you might add a "declinedBy" field to the ride.
+          // A declined ride should be findable by another driver. For now we just hide it locally.
           setPendingRideForDriver(null);
       }
   };
 
   const handleCompleteRide = async () => {
       if (!rideId) return;
-      await updateDoc(doc(db, "rides", rideId), { status: 'completed' });
+      await updateDoc(doc(db, "rides", rideId), { status: 'completed', completedAt: serverTimestamp() });
       // Reset state for next ride
       setRideId(null);
       setActiveRide(null);
@@ -285,8 +335,8 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
   useEffect(() => {
     return () => {
-      if (locationWatcherRef.current !== null) {
-        navigator.geolocation.clearWatch(locationWatcherRef.current);
+      if (generalLocationWatcherRef.current !== null) {
+        navigator.geolocation.clearWatch(generalLocationWatcherRef.current);
       }
       if (unsubscribeRideRef.current) unsubscribeRideRef.current();
       if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current();
@@ -323,13 +373,24 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             statusIcon = <Car className="h-5 w-5 text-blue-500" />;
             break;
         case 'completed':
-            statusText = "Ride completed. Thank you!";
-            statusIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
-            return null; // Don't show the card once completed.
         case 'cancelled':
-            statusText = "Your ride has been cancelled.";
-            statusIcon = <XCircle className="h-5 w-5 text-red-500" />;
-            return null; // Don't show the card once cancelled.
+             // Reset state after a moment to clear the UI
+            setTimeout(() => {
+                setActiveRide(null);
+                setRideId(null);
+            }, 5000);
+            statusText = activeRide.status === 'completed' ? "Ride Completed!" : "Ride Cancelled";
+            statusIcon = activeRide.status === 'completed' ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />;
+            return (
+                <Card className="w-full max-w-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-3">
+                            {statusIcon}
+                            <span>{statusText}</span>
+                        </CardTitle>
+                    </CardHeader>
+                </Card>
+            )
         default:
              return null;
     }
