@@ -1,0 +1,35 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read and write their own data.
+    // This protects user privacy and prevents one user from modifying another's profile.
+    match /users/{userId} {
+      allow read, update, create: if request.auth.uid == userId;
+    }
+
+    // Any authenticated user can read driver locations (for the map).
+    // Only the driver themselves can create or update their own location document.
+    match /driver_locations/{driverId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth.uid == driverId;
+    }
+
+    // Ride documents have more granular access control.
+    match /rides/{rideId} {
+      // Any authenticated user can read a ride document if they are the rider or the assigned driver.
+      allow read: if request.auth != null && (request.auth.uid == resource.data.riderId || request.auth.uid == resource.data.driverId);
+
+      // A user can create a ride if they are authenticated and the riderId in the new document matches their own UID.
+      allow create: if request.auth != null && request.resource.data.riderId == request.auth.uid;
+
+      // A user can update a ride document if they are the assigned driver, or if they are the rider and are cancelling the ride.
+      // This allows drivers to accept/complete rides and riders to cancel them.
+      allow update: if request.auth != null && 
+                    (request.auth.uid == resource.data.driverId || 
+                    (request.auth.uid == resource.data.riderId && request.resource.data.status == 'cancelled'));
+    }
+  }
+}

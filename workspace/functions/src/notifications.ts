@@ -42,7 +42,6 @@ export const notifyDriverOnRideRequest = async (
     const driversSnapshot = await db.collection('driver_locations').get();
     if (driversSnapshot.empty) {
       functions.logger.warn('No online drivers available.');
-      // Optional: Update ride status to 'no_drivers_available'
       await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available' });
       return null;
     }
@@ -53,10 +52,8 @@ export const notifyDriverOnRideRequest = async (
     // 3. Find the closest driver
     for (const driverDoc of driversSnapshot.docs) {
       const driverData = driverDoc.data();
-      const { latitude: driverLat, longitude: driverLng } = driverData;
-      const distance = getDistance(rideLat, rideLng, driverLat, driverLng);
+      const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
       
-      // Fetch driver's user data to get FCM token
       const userDoc = await db.collection('users').doc(driverData.driver_id).get();
       if (!userDoc.exists) {
         functions.logger.warn(`User document for driver ${driverData.driver_id} not found.`);
@@ -82,21 +79,47 @@ export const notifyDriverOnRideRequest = async (
 
     functions.logger.log(`Nearest driver found: ${nearestDriver.id} at ${nearestDriver.distance.toFixed(2)} km.`);
 
-    // 4. Send FCM Notification
+    // 4. Send FCM Notification with deep-link URL
     const message = {
       notification: {
         title: 'New Ride Request Nearby',
         body: 'Tap to view and accept the ride.',
       },
       token: nearestDriver.token,
+      webpush: {
+        notification: {
+            icon: '/favicon.ico', // Optional: Add an icon URL
+        },
+        fcm_options: {
+          // The link to open when the user clicks on the notification.
+          link: `/driver-home?rideId=${rideId}`
+        },
+      },
       data: {
-        rideId: rideId,
-        click_action: 'FLUTTER_NOTIFICATION_CLICK', // Standard for cross-platform compatibility
-      }
+        // Pass the URL in the data payload for the service worker
+        url: `/driver-home?rideId=${rideId}`,
+      },
     };
+    
+    // Wrap send in try/catch to handle stale tokens
+    try {
+        await messaging.send(message);
+        functions.logger.log(`Successfully sent notification to driver ${nearestDriver.id}.`);
+    } catch (error: any) {
+        functions.logger.error(`Error sending notification to ${nearestDriver.id}:`, error);
+        // If token is invalid, remove it from the user's document
+        if (
+          error.code === 'messaging/invalid-registration-token' ||
+          error.code === 'messaging/registration-token-not-registered'
+        ) {
+          functions.logger.log(`Cleaning stale token for driver ${nearestDriver.id}. Error code: ${error.code}`);
+          const { FieldValue } = await import('firebase-admin/firestore');
+          await db.collection('users').doc(nearestDriver.id).update({
+            fcmToken: FieldValue.delete(),
+          });
+        }
+    }
 
-    await messaging.send(message);
-    functions.logger.log(`Successfully sent notification to driver ${nearestDriver.id}.`);
 
     // 5. Update the ride document with the notified driver's ID
     await db.collection('rides').doc(rideId).update({
@@ -107,7 +130,6 @@ export const notifyDriverOnRideRequest = async (
 
   } catch (error) {
     functions.logger.error(`Failed to process ride request ${rideId}`, error);
-    // Optional: Update ride status to 'error'
     await db.collection('rides').doc(rideId).update({ status: 'error', errorMessage: 'Failed to notify driver' });
     return null;
   }
