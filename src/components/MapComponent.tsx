@@ -11,7 +11,8 @@ const containerStyle = {
   height: '100%',
 };
 
-// Define the required libraries for the Google Maps API
+// Define the required libraries for the Google Maps API OUTSIDE the component.
+// This ensures the array reference is stable and doesn't trigger re-renders.
 const LIBRARIES: ('places' | 'directions')[] = ['places', 'directions'];
 
 const mapOptions = {
@@ -53,7 +54,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: googleMapsApiKey || "",
+    googleMapsApiKey: googleMapsApiKey || "", // Pass an empty string if key is not available, which will be caught by our guard clause.
     libraries: LIBRARIES,
   });
 
@@ -112,7 +113,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
       setMap(mapInstance);
   }, []);
 
-  // Show a clear error if the API key is missing in the environment.
+  // NEW: Add a clear error if the API key is missing in the environment.
   if (!googleMapsApiKey) {
     return (
       <div className="flex items-center justify-center h-full bg-destructive/10 text-destructive p-4 text-center">
@@ -207,5 +208,3 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
 }
 
 export default React.memo(MapComponent);
-
-    
