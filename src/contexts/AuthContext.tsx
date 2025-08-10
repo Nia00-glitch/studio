@@ -25,8 +25,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper function to handle FCM token logic
 const setupFCM = async (user: User, toast: (options: any) => void) => {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    console.log("FCM not supported in this environment.");
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
+    console.log("FCM not supported or VAPID key is missing.");
     return;
   }
   try {
