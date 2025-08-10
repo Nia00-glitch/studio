@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { Settings, Shield, Mic, WifiOff, AlertTriangle, LogOut, Loader2, Search, Car, User, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
@@ -190,7 +190,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   
   // Effect for fetching nearby drivers (for rider)
   useEffect(() => {
-    if (role === 'rider') {
+    if (role === 'rider' && !activeRide) {
       const q = query(collection(db, "driver_locations"));
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const driversData: any[] = [];
@@ -200,8 +200,10 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         setDrivers(driversData);
       });
       return () => unsubscribe();
+    } else {
+      setDrivers([]); // Clear drivers if in a ride
     }
-  }, [role]);
+  }, [role, activeRide]);
 
   // Effect to listen for ride updates (for both rider and driver)
   useEffect(() => {
@@ -449,6 +451,24 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       )
   };
 
+  const getMapPropsForRole = useCallback(() => {
+    // Rider in an active ride
+    if (role === 'rider' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
+        return {
+            center: location, // Rider's own location is the center
+            activeRide: activeRide, // Pass the whole ride object
+            role: 'rider'
+        };
+    }
+    
+    // Default for rider (no active ride) or driver
+    return {
+        center: location,
+        drivers: role === 'rider' ? drivers : [],
+        role: role
+    };
+  }, [role, activeRide, location, drivers]);
+
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-gradient-to-b from-black/20 to-transparent">
@@ -483,7 +503,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             </div>
         )}
         {location && (
-            <MapComponent center={location} role={role} drivers={drivers} />
+            <MapComponent {...getMapPropsForRole()} />
         )}
       </main>
 
