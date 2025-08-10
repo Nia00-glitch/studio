@@ -1,19 +1,19 @@
+// DO NOT MODIFY - This file is essential for background push notifications.
+// It must be in the public directory.
 
-// This file must be in the public folder.
+// Import the Firebase scripts for the compatibility libraries
+importScripts("https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js");
 
-// Give the service worker access to the Firebase Messaging SDK.
-importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
-
-// Initialize the Firebase app in the service worker with the same config as your app.
-// Note: It's safe to expose this config.
+// Initialize the Firebase app in the service worker with your project's configuration
+// IMPORTANT: Replace this with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: self.location.search.split('apiKey=')[1].split('&')[0],
-  authDomain: self.location.search.split('authDomain=')[1].split('&')[0],
-  projectId: self.location.search.split('projectId=')[1].split('&')[0],
-  storageBucket: self.location.search.split('storageBucket=')[1].split('&')[0],
-  messagingSenderId: self.location.search.split('messagingSenderId=')[1].split('&')[0],
-  appId: self.location.search.split('appId=')[1].split('&')[0],
+  apiKey: "your-api-key",
+  authDomain: "your-auth-domain",
+  projectId: "your-project-id",
+  storageBucket: "your-storage-bucket",
+  messagingSenderId: "your-messaging-sender-id",
+  appId: "your-app-id",
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -21,18 +21,24 @@ firebase.initializeApp(firebaseConfig);
 // Retrieve an instance of Firebase Messaging so that it can handle background messages.
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage((payload) => {
-  console.log(
-    '[firebase-messaging-sw.js] Received background message ',
-    payload
-  );
-
-  // Customize notification here
-  const notificationTitle = payload.notification.title || 'New Notification';
+messaging.onBackgroundMessage(function(payload) {
+  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  
+  // Customize the notification here
+  const notificationTitle = payload.notification.title || 'New Message';
   const notificationOptions = {
-    body: payload.notification.body || 'Something happened',
-    icon: '/nia-icon-192.png' // Optional: Add an icon in the public folder
+    body: payload.notification.body || 'You have a new message.',
+    icon: '/nia-icon-192.png' // Optional: Add a default icon
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Optional: Handle notification clicks
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  // TODO: Add logic to open a specific URL or focus the app window
+  event.waitUntil(
+    clients.openWindow('/')
+  );
 });

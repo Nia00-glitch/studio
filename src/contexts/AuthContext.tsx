@@ -25,36 +25,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper function to handle FCM token logic
 const setupFCM = async (user: User, toast: (options: any) => void) => {
+  // Guard: Run only on client-side and if VAPID key is provided
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
-    console.log("FCM not supported or VAPID key is missing.");
+    console.warn("FCM not supported or VAPID key is missing.");
     return;
   }
+  
   try {
     const messaging = getMessaging(app);
 
     // 1. Request permission
     const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      console.log('Notification permission granted.');
-      
-      // 2. Get token
-      const fcmToken = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY });
-      
-      if (fcmToken) {
-        console.log('FCM Token:', fcmToken);
-        
-        // 3. Persist token to Firestore
-        const userDocRef = doc(db, 'users', user.uid);
-        await updateDoc(userDocRef, {
-          fcmToken: fcmToken,
-          updatedAt: serverTimestamp()
-        });
-        console.log('FCM token saved to Firestore.');
-      } else {
-        console.warn('No registration token available. Request permission to generate one.');
-      }
-    } else {
+    if (permission !== 'granted') {
       console.warn('Notification permission denied.');
+      return;
+    }
+    
+    console.log('Notification permission granted.');
+    
+    // 2. Get token
+    // It's crucial to pass the VAPID key to getToken
+    const fcmToken = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY });
+    
+    if (fcmToken) {
+      console.log('FCM Token:', fcmToken);
+      
+      // 3. Persist token to Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        fcmToken: fcmToken,
+        updatedAt: serverTimestamp()
+      });
+      console.log('FCM token saved to Firestore.');
+    } else {
+      console.warn('No registration token available. Request permission to generate one.');
     }
     
     // 4. Handle foreground messages
