@@ -11,8 +11,9 @@ const containerStyle = {
   height: '100%',
 };
 
-// Define the required libraries for the Google Maps API OUTSIDE the component.
-// This ensures the array reference is stable and doesn't trigger re-renders.
+// CRITICAL FIX: Define the required libraries array OUTSIDE the component.
+// This ensures the array reference is stable and doesn't trigger re-renders
+// or cause the useJsApiLoader hook to re-run unnecessarily.
 const MAP_LIBRARIES: ('places' | 'directions')[] = ['places', 'directions'];
 
 const mapOptions = {
@@ -49,7 +50,7 @@ interface MapComponentProps {
 }
 
 function MapComponent({ center, drivers = [], role, activeRide }: MapComponentProps) {
-  // Guard: Ensure the API key is available before attempting to load the script.
+  // CRITICAL FIX: Add a guard to ensure the API key is available before attempting to load the script.
   const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded, loadError } = useJsApiLoader({
@@ -113,14 +114,15 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
       setMap(mapInstance);
   }, []);
 
-  // NEW: Add a clear error if the API key is missing in the environment.
+  // CRITICAL FIX: Add a clear error if the API key is missing in the environment.
+  // This prevents the loader from being called with an empty key and provides clear developer feedback.
   if (!googleMapsApiKey) {
     return (
       <div className="flex items-center justify-center h-full bg-destructive/10 text-destructive p-4 text-center">
         <p>
           <strong>Google Maps API Key is missing.</strong>
           <br />
-          Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your environment variables and restart the server.
+          Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your environment variables (.env.local) and restart the dev server.
         </p>
       </div>
     );
