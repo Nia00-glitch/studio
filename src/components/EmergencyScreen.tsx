@@ -1,10 +1,13 @@
+
 "use client";
 
 import { useContext, useEffect, useState, useRef } from "react";
 import { EmergencyContext } from "@/contexts/EmergencyContext";
 import { Button } from "@/components/ui/button";
-import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare, VideoOff } from "lucide-react";
+import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare, VideoOff, Link } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
+
 
 export default function EmergencyScreen() {
   const { 
@@ -20,6 +23,7 @@ export default function EmergencyScreen() {
   } = useContext(EmergencyContext);
   const [status, setStatus] = useState("Activating emergency protocols...");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (mediaStream && videoRef.current) {
@@ -62,6 +66,30 @@ export default function EmergencyScreen() {
     window.location.href = "tel:100";
   };
 
+  const handleCopyLocationLink = () => {
+    if (!navigator.geolocation) {
+      toast({ variant: "destructive", title: "Geolocation is not supported by your browser." });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+        
+        navigator.clipboard.writeText(mapsLink).then(() => {
+          toast({ title: "Location Link Copied!", description: "You can now paste it in any message." });
+          setStatus("Location link copied to clipboard.");
+        }).catch(err => {
+          toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy link to clipboard." });
+        });
+      },
+      () => {
+        toast({ variant: "destructive", title: "Location access denied" });
+      }
+    );
+  };
+
 
   return (
     <div className="fixed inset-0 bg-primary text-primary-foreground flex flex-col items-center justify-between p-4 md:p-8 z-50 animate-in fade-in-20">
@@ -95,9 +123,9 @@ export default function EmergencyScreen() {
         <p className="text-xl font-light mb-4">{status}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
             <ActionButton icon={MapPin} label="Send Location" onClick={shareLocation} />
-            <ActionButton icon={Siren} label="Alert Authorities" onClick={handleAlertAuthorities} />
+            <ActionButton icon={Link} label="Copy Link" onClick={handleCopyLocationLink} />
             <ActionButton icon={isRecording ? VideoOff : Video} label={isRecording ? "Stop Rec" : "Start Rec"} onClick={handleToggleRecording} active={isRecording} />
-            <ActionButton icon={MessageSquare} label="Message All" onClick={shareLocation} />
+            <ActionButton icon={Siren} label="Alert Authorities" onClick={handleAlertAuthorities} />
         </div>
       </main>
 
