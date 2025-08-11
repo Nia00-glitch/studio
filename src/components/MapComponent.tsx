@@ -13,7 +13,7 @@ const containerStyle = {
 
 // Define the required libraries for the Google Maps API OUTSIDE the component.
 // This ensures the array reference is stable and doesn't trigger re-renders.
-const LIBRARIES: ('places' | 'directions')[] = ['places', 'directions'];
+const MAP_LIBRARIES: ('places' | 'directions')[] = ['places', 'directions'];
 
 const mapOptions = {
     disableDefaultUI: true,
@@ -55,7 +55,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: googleMapsApiKey || "", // Pass an empty string if key is not available, which will be caught by our guard clause.
-    libraries: LIBRARIES,
+    libraries: MAP_LIBRARIES,
   });
 
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
@@ -101,13 +101,13 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
   // Effect to calculate and display the route for an active ride
   useEffect(() => {
     // Ensure the route is calculated only when the driver's live location is available and the map is loaded.
-    if (activeRide && activeRide.driverLive && map) {
+    if (activeRide && activeRide.driverLive && map && isLoaded) {
       const { driverLive, pickupLocation, destinationAddress, status } = activeRide;
       calculateRoute(driverLive, pickupLocation, destinationAddress, status);
     } else {
       setDirections(null); // Clear directions when ride ends
     }
-  }, [activeRide, map, calculateRoute]);
+  }, [activeRide, map, isLoaded, calculateRoute]);
 
   const onMapLoad = useCallback((mapInstance: google.maps.Map) => {
       setMap(mapInstance);
@@ -120,7 +120,7 @@ function MapComponent({ center, drivers = [], role, activeRide }: MapComponentPr
         <p>
           <strong>Google Maps API Key is missing.</strong>
           <br />
-          Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your environment variables.
+          Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your environment variables and restart the server.
         </p>
       </div>
     );
