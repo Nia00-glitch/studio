@@ -55,7 +55,7 @@ export default function MapsDebugPage() {
           <h3 className="font-semibold text-lg">Runtime Environment</h3>
           <ul className="list-disc pl-5 space-y-2 text-sm">
             <li>
-              <strong>Current Origin:</strong> code>{origin}</code>
+              <strong>Current Origin:</strong> <code>{origin}</code>
             </li>
             <li>
               <strong>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:</strong>
