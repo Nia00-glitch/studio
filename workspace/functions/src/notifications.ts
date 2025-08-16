@@ -1,13 +1,10 @@
 
 import * as functions from 'firebase-functions';
 import { db, messaging } from './common'; // Use shared admin instance
+import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * Calculates the Haversine distance between two points on the Earth.
- * @param lat1 Latitude of the first point.
- * @param lon1 Longitude of the first point.
- * @param lat2 Latitude of the second point.
- * @param lon2 Longitude of the second point.
  * @returns The distance in kilometers.
  */
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -29,19 +26,16 @@ export const notifyDriverOnRideRequest = async (
   const rideData = snap.data();
   const rideId = context.params.rideId;
 
-  // 1. Ensure this is a new, pending ride request
   if (rideData.status !== 'pending') {
-    functions.logger.log(`Ride ${rideId} is not pending, skipping notification.`);
+    functions.logger.log(`Ride ${rideId} is not pending, skipping.`);
     return null;
   }
 
   functions.logger.log(`New ride request ${rideId}, finding nearest driver.`);
 
   try {
-    // 2. Fetch all online drivers
     const driversSnapshot = await db.collection('driver_locations').get();
     if (driversSnapshot.empty) {
-      functions.logger.warn('No online drivers available.');
       await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available' });
       return null;
     }
@@ -49,22 +43,15 @@ export const notifyDriverOnRideRequest = async (
     let nearestDriver: { id: string, distance: number, token: string } | null = null;
     const { latitude: rideLat, longitude: rideLng } = rideData.pickupLocation;
 
-    // 3. Find the closest driver
     for (const driverDoc of driversSnapshot.docs) {
       const driverData = driverDoc.data();
       const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
       
       const userDoc = await db.collection('users').doc(driverData.driver_id).get();
-      if (!userDoc.exists) {
-        functions.logger.warn(`User document for driver ${driverData.driver_id} not found.`);
-        continue;
-      }
+      if (!userDoc.exists()) continue;
       
       const userData = userDoc.data();
-      if (!userData?.fcmToken) {
-        functions.logger.warn(`FCM token for driver ${driverData.driver_id} is missing.`);
-        continue;
-      }
+      if (!userData?.fcmToken) continue;
       
       if (nearestDriver === null || distance < nearestDriver.distance) {
         nearestDriver = { id: driverData.driver_id, distance, token: userData.fcmToken };
@@ -72,56 +59,51 @@ export const notifyDriverOnRideRequest = async (
     }
 
     if (!nearestDriver) {
-      functions.logger.warn('Could not find a valid nearest driver with an FCM token.');
       await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available' });
       return null;
     }
 
-    functions.logger.log(`Nearest driver found: ${nearestDriver.id} at ${nearestDriver.distance.toFixed(2)} km.`);
-
-    // 4. Send FCM Notification with deep-link URL
+    functions.logger.log(`Notifying nearest driver: ${nearestDriver.id}.`);
+    
+    // --- 🚀 PERFORMANCE & RELIABILITY OPTIMIZATION ---
+    // The webpush.fcm_options.link is crucial for PWA/web notifications
     const message = {
       notification: {
-        title: 'New Ride Request Nearby',
-        body: 'Tap to view and accept the ride.',
+        title: 'New Ride Request!',
+        body: 'A rider is waiting nearby. Tap to accept.',
       },
       token: nearestDriver.token,
       webpush: {
         notification: {
-            icon: '/favicon.ico', // Optional: Add an icon URL
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/badge.png'
         },
         fcm_options: {
-          // The link to open when the user clicks on the notification.
-          link: `/driver-home?rideId=${rideId}`
+          link: `/driver-home?rideId=${rideId}` // Deep-link
         },
       },
       data: {
-        // Pass the URL in the data payload for the service worker
-        url: `/driver-home?rideId=${rideId}`,
+        url: `/driver-home?rideId=${rideId}`, // Pass URL for service worker
       },
     };
     
-    // Wrap send in try/catch to handle stale tokens
     try {
         await messaging.send(message);
-        functions.logger.log(`Successfully sent notification to driver ${nearestDriver.id}.`);
     } catch (error: any) {
         functions.logger.error(`Error sending notification to ${nearestDriver.id}:`, error);
-        // If token is invalid, remove it from the user's document
+        // --- 🚀 RELIABILITY OPTIMIZATION: Clean up stale tokens ---
         if (
           error.code === 'messaging/invalid-registration-token' ||
           error.code === 'messaging/registration-token-not-registered'
         ) {
-          functions.logger.log(`Cleaning stale token for driver ${nearestDriver.id}. Error code: ${error.code}`);
-          const { FieldValue } = await import('firebase-admin/firestore');
+          functions.logger.log(`Stale FCM token for driver ${nearestDriver.id}. Removing.`);
           await db.collection('users').doc(nearestDriver.id).update({
             fcmToken: FieldValue.delete(),
           });
         }
+        // We might want to try notifying the *next* nearest driver here in a real-world scenario.
     }
 
-
-    // 5. Update the ride document with the notified driver's ID
     await db.collection('rides').doc(rideId).update({
       notifiedDriverId: nearestDriver.id,
     });
@@ -130,7 +112,7 @@ export const notifyDriverOnRideRequest = async (
 
   } catch (error) {
     functions.logger.error(`Failed to process ride request ${rideId}`, error);
-    await db.collection('rides').doc(rideId).update({ status: 'error', errorMessage: 'Failed to notify driver' });
+    await db.collection('rides').doc(rideId).update({ status: 'error', errorMessage: 'Failed to find and notify a driver' });
     return null;
   }
 };

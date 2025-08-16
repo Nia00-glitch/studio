@@ -1,0 +1,22 @@
+
+{
+  "name": "NIA Safety Assistant",
+  "short_name": "NIA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#E6EBF5",
+  "theme_color": "#FF4136",
+  "description": "Your personal safety companion.",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

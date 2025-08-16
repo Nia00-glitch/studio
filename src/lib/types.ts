@@ -21,9 +21,9 @@ export interface UserProfile {
   role: 'rider' | 'driver';
   emergencyContact?: string;
   vehicleInfo?: string;
-  fcmToken?: string; // Added for push notifications
+  fcmToken?: string;
   createdAt: any; // Firestore ServerTimestamp
-  updatedAt?: any;
+  updatedAt?: any; // Firestore ServerTimestamp
 }
 
 
@@ -48,6 +48,7 @@ export interface Ride {
     pickupLocation: {
         latitude: number;
         longitude: number;
+        address?: string; // Optional field for reverse geocoded address
     };
     destinationAddress: string;
     status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'no_drivers_available' | 'error';
@@ -58,7 +59,7 @@ export interface Ride {
     driverLive?: {
         lat: number;
         lng: number;
-        heading?: number;
+        heading?: number | null;
         updatedAt: any; // Firestore ServerTimestamp
     };
     acceptedAt?: any; // Firestore ServerTimestamp

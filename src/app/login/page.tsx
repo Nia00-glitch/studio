@@ -96,6 +96,14 @@ function LoginForm() {
     try {
       await window.confirmationResult.confirm(otp);
       toast({ title: 'Success', description: 'Phone number verified!' });
+
+      // --- 🚀 PERFORMANCE OPTIMIZATION: Prefetch next possible routes ---
+      console.time("prefetch:dashboards");
+      router.prefetch('/rider-home');
+      router.prefetch('/driver-home');
+      router.prefetch('/complete-profile');
+      console.timeEnd("prefetch:dashboards");
+
       router.push('/');
     } catch (error: any) {
       console.error("Error verifying OTP:", error);
