@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, Shield, Mic, WifiOff, AlertTriangle, LogOut, Loader2, Search, Car, User, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Settings, Shield, Mic, WifiOff, AlertTriangle, LogOut, Loader2, Search, Car, User, Clock, CheckCircle, XCircle, MapPin, DollarSign } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -38,6 +38,63 @@ const MapComponent = dynamic(() => import('@/components/MapComponent'), {
 });
 
 const LOCATION_STREAMING_INTERVAL = 5000; // 5 seconds
+
+// World-class Ride Request Card Component
+const RideRequestCard = ({ ride, onAccept, onDecline }: { ride: Ride, onAccept: () => void, onDecline: () => void }) => {
+  // Mock data for display purposes, can be replaced with real data from `ride` prop
+  const pickupAddress = ride.pickupLocation?.address || '1055 Market St';
+  const destinationAddress = ride.destinationAddress || 'San Francisco Ferry Building';
+  const timeToPickup = '2 min';
+  const estimatedFare = '24.80';
+
+  return (
+    <Card className="w-full max-w-md mx-auto bg-card shadow-2xl rounded-3xl border-none">
+      <CardHeader className="p-6 pb-4">
+        <CardTitle className="text-3xl font-bold">Ride request</CardTitle>
+        <CardDescription className="text-muted-foreground text-base">A customer is waiting for a ride.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-6 space-y-6">
+        {/* Route Info */}
+        <div className="flex items-start space-x-4">
+          <div className="flex flex-col items-center h-full">
+            <div className="flex-shrink-0 grid place-content-center bg-orange-500 rounded-xl w-12 h-12">
+              <Car className="w-7 h-7 text-white" />
+            </div>
+            <div className="flex-grow w-px bg-border my-2" />
+            <MapPin className="w-7 h-7 text-foreground" />
+          </div>
+          <div className="flex flex-col justify-between h-full pt-1.5 pb-2">
+            <p className="font-semibold text-lg">{pickupAddress}</p>
+            <p className="font-semibold text-lg mt-8">{destinationAddress}</p>
+          </div>
+        </div>
+
+        {/* Ride Details */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center justify-center bg-muted/50 rounded-xl p-3 space-x-2">
+            <Clock className="w-5 h-5 text-muted-foreground" />
+            <span className="font-semibold text-lg">{timeToPickup}</span>
+          </div>
+          <div className="flex items-center justify-center bg-muted/50 rounded-xl p-3 space-x-2">
+            <DollarSign className="w-5 h-5 text-muted-foreground" />
+            <span className="font-semibold text-lg">{estimatedFare}</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <Button variant="outline" size="lg" className="h-14 text-lg rounded-xl border-2" onClick={onDecline}>
+            Decline
+          </Button>
+          <Button size="lg" className="h-14 text-lg rounded-xl" onClick={onAccept}>
+            Accept
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
@@ -512,20 +569,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             {role === 'driver' && (
                 <div>
                   {!activeRide && pendingRideForDriver && (
-                      <Card className="mb-4 bg-accent/20 border-accent">
-                          <CardHeader>
-                              <CardTitle>Incoming Ride Request!</CardTitle>
-                              <CardDescription>From: {pendingRideForDriver.riderName}. To: {pendingRideForDriver.destinationAddress}</CardDescription>
-                          </CardHeader>
-                          <CardContent className="flex gap-4">
-                              <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => handleRideDecision(pendingRideForDriver.id, 'accepted')}>
-                                  <CheckCircle className="mr-2" /> Accept
-                              </Button>
-                              <Button variant="destructive" className="w-full" onClick={() => handleRideDecision(pendingRideForDriver.id, 'declined')}>
-                                  <XCircle className="mr-2" /> Decline
-                              </Button>
-                          </CardContent>
-                      </Card>
+                      <RideRequestCard 
+                        ride={pendingRideForDriver} 
+                        onAccept={() => handleRideDecision(pendingRideForDriver.id, 'accepted')} 
+                        onDecline={() => handleRideDecision(pendingRideForDriver.id, 'declined')} 
+                      />
                   )}
 
                   {!activeRide && !pendingRideForDriver && (
@@ -536,7 +584,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                       </div>
                        <AlertDialog>
                           <AlertDialogTrigger asChild>
-                              <Button size="lg" className="gap-2 bg-primary/90 hover:bg-primary text-primary-foreground rounded-full px-8 text-lg">
+                              <Button size="lg" className="gap-2 bg-destructive/90 hover:bg-destructive text-destructive-foreground rounded-full px-8 text-lg">
                                   <Shield className="h-6 w-6" />
                                   Manual Activation
                               </Button>
