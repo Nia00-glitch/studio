@@ -18,7 +18,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { uploadRecordingToFirebase } from "@/lib/storage";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const phoneRegex = new RegExp(
@@ -43,6 +43,19 @@ export default function SettingsClient() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
+
+  // --- Optimization: Prefetch Dashboards ---
+  useEffect(() => {
+    if (userProfile) {
+        console.time("prefetch:/rider-home");
+        router.prefetch('/rider-home');
+        console.timeEnd("prefetch:/rider-home");
+
+        console.time("prefetch:/driver-home");
+        router.prefetch('/driver-home');
+        console.timeEnd("prefetch:/driver-home");
+    }
+  }, [userProfile, router]);
 
 
   const form = useForm<z.infer<typeof settingsSchema>>({
@@ -99,19 +112,17 @@ export default function SettingsClient() {
     if (!userProfile || userProfile.role === newRole || isSwitchingRole) return;
     
     setIsSwitchingRole(true);
-    // PERF: Start timing the role switch operation
     const roleSwitchStart = performance.now();
 
     try {
-      // The updateRole function is now optimistic, so it resolves almost instantly.
-      // It handles the local state update.
       await updateRole(newRole);
 
-      const roleSwitchEnd = performance.now();
-      console.log(`🚀 SettingsClient: Role switch to '${newRole}' took ${(roleSwitchEnd - roleSwitchStart).toFixed(2)}ms`);
-
-      // Immediately redirect after the local state is updated.
+      console.time("role-switch:navigation");
       router.replace(newRole === 'driver' ? '/driver-home' : '/rider-home');
+      const roleSwitchEnd = performance.now();
+      console.timeEnd("role-switch:navigation");
+      
+      console.log(`🚀 SettingsClient: Optimistic role switch to '${newRole}' took ${(roleSwitchEnd - roleSwitchStart).toFixed(2)}ms`);
 
       toast({
         title: "Mode Switched!",

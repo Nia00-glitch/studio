@@ -19,6 +19,8 @@ import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query,
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
 import type { Ride } from "@/lib/types";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 
 import {
   AlertDialog,
@@ -32,69 +34,19 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+// --- Optimization: Code-split the RideRequestCard ---
+const RideRequestCard = dynamic(() => import('@/components/RideRequestCard'), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full max-w-md h-[480px] mx-auto rounded-3xl" />,
+});
+
 const MapComponent = dynamic(() => import('@/components/MapComponent'), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>,
 });
 
-const LOCATION_STREAMING_INTERVAL = 5000; // 5 seconds
-
-// World-class Ride Request Card Component
-const RideRequestCard = ({ ride, onAccept, onDecline }: { ride: Ride, onAccept: () => void, onDecline: () => void }) => {
-  // Mock data for display purposes, can be replaced with real data from `ride` prop
-  const pickupAddress = ride.pickupLocation?.address || '1055 Market St';
-  const destinationAddress = ride.destinationAddress || 'San Francisco Ferry Building';
-  const timeToPickup = '2 min';
-  const estimatedFare = '24.80';
-
-  return (
-    <Card className="w-full max-w-md mx-auto bg-card shadow-2xl rounded-3xl border-none">
-      <CardHeader className="p-6 pb-4">
-        <CardTitle className="text-3xl font-bold">Ride request</CardTitle>
-        <CardDescription className="text-muted-foreground text-base">A customer is waiting for a ride.</CardDescription>
-      </CardHeader>
-      <CardContent className="p-6 space-y-6">
-        {/* Route Info */}
-        <div className="flex items-start space-x-4">
-          <div className="flex flex-col items-center h-full">
-            <div className="flex-shrink-0 grid place-content-center bg-orange-500 rounded-xl w-12 h-12">
-              <Car className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-grow w-px bg-border my-2" />
-            <MapPin className="w-7 h-7 text-foreground" />
-          </div>
-          <div className="flex flex-col justify-between h-full pt-1.5 pb-2">
-            <p className="font-semibold text-lg">{pickupAddress}</p>
-            <p className="font-semibold text-lg mt-8">{destinationAddress}</p>
-          </div>
-        </div>
-
-        {/* Ride Details */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center justify-center bg-muted/50 rounded-xl p-3 space-x-2">
-            <Clock className="w-5 h-5 text-muted-foreground" />
-            <span className="font-semibold text-lg">{timeToPickup}</span>
-          </div>
-          <div className="flex items-center justify-center bg-muted/50 rounded-xl p-3 space-x-2">
-            <DollarSign className="w-5 h-5 text-muted-foreground" />
-            <span className="font-semibold text-lg">{estimatedFare}</span>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-4 pt-2">
-          <Button variant="outline" size="lg" className="h-14 text-lg rounded-xl border-2" onClick={onDecline}>
-            Decline
-          </Button>
-          <Button size="lg" className="h-14 text-lg rounded-xl" onClick={onAccept}>
-            Accept
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
+const LOCATION_STREAMING_INTERVAL = 5000; // 5 seconds for active rides
+const IDLE_LOCATION_UPDATE_INTERVAL = 4000; // Debounce idle updates to every 4 seconds
 
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { isEmergencyActive, triggerEmergency, isOnline } = useEmergencyContext();
@@ -117,6 +69,22 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
   
+  // --- Optimization: Debounce driver location updates ---
+  const debouncedUpdateDriverLocation = useDebouncedCallback(
+    (lat: number, lng: number) => {
+      if (user) {
+        console.log(`%c[Firestore Write] Debounced: Updating idle driver location.`, 'color: orange');
+        setDoc(doc(db, "driver_locations", user.uid), {
+          driver_id: user.uid,
+          latitude: lat,
+          longitude: lng,
+          timestamp: serverTimestamp(),
+        }, { merge: true });
+      }
+    },
+    IDLE_LOCATION_UPDATE_INTERVAL
+  );
+  
   // Real-time location watching effect
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -130,9 +98,9 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       setLocation(newLocation);
       setLocationError(null);
 
-      // If driver is online AND NOT in a ride, broadcast location globally
+      // If driver is online AND NOT in a ride, broadcast location with debounce
       if (role === 'driver' && isOnlineAsDriver && !activeRide) {
-        updateDriverLocation(latitude, longitude);
+        debouncedUpdateDriverLocation(latitude, longitude);
       }
     };
 
@@ -149,7 +117,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       toast({ variant: 'destructive', title: "Location Error", description: message });
     };
     
-    // Use high accuracy for drivers, standard for riders
     const options = { enableHighAccuracy: role === 'driver', timeout: 10000, maximumAge: 0 };
     generalLocationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
 
@@ -158,7 +125,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         navigator.geolocation.clearWatch(generalLocationWatcherRef.current);
       }
     };
-  }, [role, isOnlineAsDriver, activeRide, toast]);
+  }, [role, isOnlineAsDriver, activeRide, toast, debouncedUpdateDriverLocation]);
 
 
   // Effect for streaming DRIVER'S location to an ACTIVE RIDE document
@@ -166,13 +133,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     let watcherId: number | null = null;
     let lastUpdateTime = 0;
 
-    // Only run this effect if you are a driver with an active ride that is 'accepted' or 'in-progress'
     if (role === 'driver' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
       const rideDocRef = doc(db, "rides", activeRide.id);
 
       const handleSuccess = (position: GeolocationPosition) => {
         const now = Date.now();
-        // Throttle Firestore writes to avoid excessive usage
         if (now - lastUpdateTime < LOCATION_STREAMING_INTERVAL) {
           return;
         }
@@ -186,6 +151,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             'driverLive.updatedAt': serverTimestamp(),
         };
         
+        console.log(`%c[Firestore Write] Active Ride: Streaming location.`, 'color: green');
         updateDoc(rideDocRef, driverLocationUpdate).catch(err => console.error("Failed to update driver live location", err));
       };
 
@@ -198,16 +164,12 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         enableHighAccuracy: true,
         maximumAge: 0,
       });
-
       console.log(`Driver streaming location for ride ${activeRide.id} with watcher ID ${watcherId}`);
-
-      // Stop broadcasting to global `driver_locations`
       if (user) {
         deleteDoc(doc(db, "driver_locations", user.uid));
       }
     }
     
-    // Cleanup function: this runs when the dependencies change OR the component unmounts.
     return () => {
       if (watcherId !== null) {
         navigator.geolocation.clearWatch(watcherId);
@@ -226,23 +188,20 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
     if (isOnline) {
       toast({ title: "Going online..." });
-      await updateDriverLocation(location.lat, location.lng);
+      // Perform an immediate write when going online, then rely on debounced updates
+      console.log(`%c[Firestore Write] Immediate: Going online.`, 'color: blue');
+      await setDoc(doc(db, "driver_locations", user.uid), {
+          driver_id: user.uid,
+          latitude: location.lat,
+          longitude: location.lng,
+          timestamp: serverTimestamp(),
+      }, { merge: true });
       toast({ title: "You are online!", description: "Your location is now visible." });
     } else {
       toast({ title: "Going offline..." });
       await deleteDoc(doc(db, "driver_locations", user.uid));
       toast({ title: "You are offline." });
     }
-  };
-
-  const updateDriverLocation = async (lat: number, lng: number) => {
-    if (!user) return;
-    await setDoc(doc(db, "driver_locations", user.uid), {
-      driver_id: user.uid,
-      latitude: lat,
-      longitude: lng,
-      timestamp: serverTimestamp(),
-    }, { merge: true });
   };
   
   // Effect for fetching nearby drivers (for rider)
@@ -529,7 +488,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-gradient-to-b from-black/20 to-transparent">
-        <h1 className="text-xl font-bold text-white shadow-md flex items-center gap-2"><NIAIcon className="w-6 h-6" /> Safety Rides Connect</h1>
+        <h1 className="text-xl font-bold text-white shadow-md flex items-center gap-2 font-headline"><NIAIcon className="w-6 h-6" /> NIA Rides</h1>
         <div className="flex items-center gap-2">
             {!isOnline && <div className="flex items-center gap-2 text-white bg-destructive/80 px-3 py-1 rounded-full text-sm"><WifiOff className="w-4 h-4" /> Offline</div>}
             <Link href="/settings" passHref>
