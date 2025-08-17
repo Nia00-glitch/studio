@@ -1,20 +1,17 @@
 
-'use server';
+
 import { onCallGenkit } from '@genkit-ai/firebase';
-import { emergencyFlow } from './simple-flow';
-import { defineSecret } from 'firebase-functions/params';
+import { emergencyFlow, niaActionFlow } from './simple-flow';
+import { estimateFare } from './estimateFare';
 import * as functions from 'firebase-functions';
 import { notifyDriverOnRideRequest } from './notifications';
 
 // Note: admin.initializeApp() is now handled in common.ts to avoid multiple initializations.
 
-const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+export const simpleGenerate = onCallGenkit({}, emergencyFlow);
+export const niaAction = onCallGenkit({}, niaActionFlow);
+export { estimateFare };
 
-// Genkit onCall function for emergency analysis
-export const simpleGenerate = onCallGenkit(
-  { secrets: [GEMINI_API_KEY] },
-  emergencyFlow
-);
 
 // Native Firestore-triggered function for ride requests
 export const onRideRequest = functions.firestore
