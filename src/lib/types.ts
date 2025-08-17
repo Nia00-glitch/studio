@@ -73,4 +73,39 @@ export interface Ride {
     acceptedAt?: any;
     completedAt?: any;
     errorMessage?: string;
+    // New fields for voice booking
+    mode?: 'cab' | 'auto' | 'bike';
+    priceEstimate?: number;
 }
+
+// Types for Fare Estimation
+export interface FareEstimates {
+    distanceKm: number;
+    durationMin: number;
+    estimates: {
+        cab: number;
+        auto: number;
+        bike: number;
+    };
+}
+
+// Types for Voice Dialog State Machine
+export type VoiceDialogState = 
+    | { status: 'IDLE' }
+    | { status: 'LISTENING' }
+    | { status: 'PARSING' }
+    | { 
+        status: 'AWAITING_MODE_CONFIRMATION'; 
+        destination: string;
+        fares: FareEstimates;
+        pickup: { lat: number; lng: number };
+      }
+    | { 
+        status: 'AWAITING_FINAL_CONFIRMATION';
+        destination: string;
+        pickup: { lat: number; lng: number };
+        mode: 'cab' | 'auto' | 'bike';
+        priceEstimate: number;
+    }
+    | { status: 'EXECUTING' }
+    | { status: 'ERROR'; message: string };

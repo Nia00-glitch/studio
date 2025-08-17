@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
-import type { Settings, NiaAction } from '@/lib/types';
+import type { Settings, NiaAction, VoiceDialogState } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { uploadRecordingToFirebase } from '@/lib/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -28,6 +28,8 @@ interface EmergencyContextType {
   processVoiceCommand: (transcript: string) => Promise<void>;
   voiceCommandState: VoiceCommandState;
   setVoiceCommandState: React.Dispatch<React.SetStateAction<VoiceCommandState>>;
+  voiceDialogState: VoiceDialogState; // Add this
+  setVoiceDialogState: React.Dispatch<React.SetStateAction<VoiceDialogState>>; // Add this
   speak: (text: string) => void;
 }
 
@@ -38,6 +40,7 @@ export type VoiceCommandState = {
 }
 
 const initialVoiceState: VoiceCommandState = { status: 'idle' };
+const initialDialogState: VoiceDialogState = { status: 'IDLE' }; // Add this
 
 const defaultSettings: Settings = {
   autoSendLocation: true,
@@ -64,6 +67,8 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   processVoiceCommand: async () => {},
   voiceCommandState: initialVoiceState,
   setVoiceCommandState: () => {},
+  voiceDialogState: initialDialogState, // Add this
+  setVoiceDialogState: () => {}, // Add this
   speak: () => {},
 });
 
@@ -92,6 +97,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [voiceCommandState, setVoiceCommandState] = useState<VoiceCommandState>(initialVoiceState);
+  const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>(initialDialogState); // Add this
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -99,6 +105,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   const speak = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Interrupt any ongoing speech
       const utterance = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(utterance);
     } else {
@@ -115,7 +122,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         const action = result.data;
         
         console.log("NLU Action:", action);
-        speak(action.responseText);
+        // speak(action.responseText); // Don't speak here, let HomeClient decide based on state
 
         setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: action, message: action.responseText });
 
@@ -232,6 +239,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     isRecording, startRecording, stopRecording, hasCameraPermission, mediaStream, shareLocation,
     isListening, setIsListening,
     processVoiceCommand, voiceCommandState, setVoiceCommandState, speak,
+    voiceDialogState, setVoiceDialogState,
   };
 
   return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;
