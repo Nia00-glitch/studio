@@ -13,7 +13,6 @@ export interface Settings {
   contacts: Contact[];
 }
 
-// User Profile for Firestore
 export interface UserProfile {
   uid: string;
   name:string;
@@ -22,22 +21,31 @@ export interface UserProfile {
   emergencyContact?: string;
   vehicleInfo?: string;
   fcmToken?: string;
-  createdAt: any; // Firestore ServerTimestamp
-  updatedAt?: any; // Firestore ServerTimestamp
+  createdAt: any;
+  updatedAt?: any;
 }
 
-
-// Types for simple-flow
-export const SimpleInputSchema = z.object({
-  prompt: z.string(),
-});
+// Legacy Emergency Flow Types
+export const SimpleInputSchema = z.object({ prompt: z.string() });
 export type SimpleInput = z.infer<typeof SimpleInputSchema>;
-
 export const EmergencyDecisionSchema = z.object({
-  activateEmergency: z.boolean().describe("A boolean indicating if emergency mode should be activated."),
-  responseText: z.string().describe("A brief, reassuring response to the user."),
+  activateEmergency: z.boolean(),
+  responseText: z.string(),
 });
 export type EmergencyDecision = z.infer<typeof EmergencyDecisionSchema>;
+
+
+// Advanced NLU Action Flow Types
+const IntentSchema = z.enum(['RIDE_REQUEST', 'SOS_REQUEST', 'CANCEL_RIDE', 'CONFIRMATION_YES', 'CONFIRMATION_NO', 'UNKNOWN']);
+const EntitiesSchema = z.object({
+  destination: z.string().optional(),
+});
+export const NiaActionSchema = z.object({
+    intent: IntentSchema,
+    entities: EntitiesSchema,
+    responseText: z.string(),
+});
+export type NiaAction = z.infer<typeof NiaActionSchema>;
 
 
 // Ride document structure
@@ -48,11 +56,11 @@ export interface Ride {
     pickupLocation: {
         latitude: number;
         longitude: number;
-        address?: string; // Optional field for reverse geocoded address
+        address?: string;
     };
     destinationAddress: string;
     status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'no_drivers_available' | 'error';
-    requestedAt: any; // Firestore ServerTimestamp
+    requestedAt: any;
     notifiedDriverId?: string;
     driverId?: string;
     driverName?: string;
@@ -60,9 +68,9 @@ export interface Ride {
         lat: number;
         lng: number;
         heading?: number | null;
-        updatedAt: any; // Firestore ServerTimestamp
+        updatedAt: any;
     };
-    acceptedAt?: any; // Firestore ServerTimestamp
-    completedAt?: any; // Firestore ServerTimestamp
+    acceptedAt?: any;
+    completedAt?: any;
     errorMessage?: string;
 }

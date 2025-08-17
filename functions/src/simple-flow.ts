@@ -1,55 +1,42 @@
 
 'use server';
 /**
- * @fileOverview A Genkit flow to determine if a user's voice command is an emergency.
+ * @fileOverview Genkit flows for the NIA Safety Assistant.
+ * 1.  emergencyFlow: A simple keyword-based emergency detector (legacy).
+ * 2.  niaActionFlow: A sophisticated NLU flow to understand user intents and entities for actions like ride booking.
  */
 import { z } from 'zod';
-import { ai } from './common'; // Import the shared, modern 'ai' object.
+import { ai } from './common';
 
-// Input schema for the emergency flow. This must match the frontend payload.
+// --- Shared Schemas ---
 export const SimpleInputSchema = z.object({
   prompt: z.string(),
 });
 export type SimpleInput = z.infer<typeof SimpleInputSchema>;
 
-// Output schema defining the AI's decision.
+// --- 1. Legacy Emergency Flow ---
 export const EmergencyDecisionSchema = z.object({
   activateEmergency: z.boolean().describe("A boolean indicating if emergency mode should be activated."),
   responseText: z.string().describe("A brief, reassuring response to the user."),
 });
 export type EmergencyDecision = z.infer<typeof EmergencyDecisionSchema>;
 
-// The prompt that instructs the AI model. This is the core logic.
 const emergencyPrompt = ai.definePrompt(
   {
     name: 'emergencyPrompt',
     input: { schema: SimpleInputSchema },
     output: { schema: EmergencyDecisionSchema },
     prompt: `You are NIA, a voice-activated AI safety assistant. Your primary function is to determine if a user's voice command constitutes a genuine emergency.
-
     Analyze the user's transcript for keywords indicating distress or a request for help.
-    
     Keywords to look for (in English or Hindi): 'help', 'emergency', 'danger', 'bachao', 'madad', 'help me', 'problem'.
-
     Your Task:
     1. If the transcript contains clear and urgent emergency keywords, set 'activateEmergency' to true.
     2. If the user's intent is unclear or does not seem like an emergency, set 'activateEmergency' to false.
     3. Provide a brief, reassuring 'responseText' for the user. If activating, confirm it. If not, state that you are on standby.
-
-    Example 1:
-    User input: "NIA help me I'm in trouble"
-    Your output: { "activateEmergency": true, "responseText": "Emergency mode activated. I am sending for help." }
-
-    Example 2:
-    User input: "what is the time NIA"
-    Your output: { "activateEmergency": false, "responseText": "I am here if you need me. Just say the word." }
-    
-    User Transcript:
-    "{{prompt}}"`,
+    User Transcript: "{{prompt}}"`,
   },
 );
 
-// The main flow that executes the prompt.
 export const emergencyFlow = ai.defineFlow(
   {
     name: 'emergencyFlow',
@@ -57,8 +44,72 @@ export const emergencyFlow = ai.defineFlow(
     outputSchema: EmergencyDecisionSchema,
   },
   async (prompt) => {
-    // The input 'prompt' here is an object { prompt: "the user's words" }
     const { output } = await emergencyPrompt(prompt);
     return output!;
   }
+);
+
+
+// --- 2. Advanced NLU Action Flow ---
+
+// Define the possible intents the AI can recognize.
+const IntentSchema = z.enum(['RIDE_REQUEST', 'SOS_REQUEST', 'CANCEL_RIDE', 'CONFIRMATION_YES', 'CONFIRMATION_NO', 'UNKNOWN']);
+
+// Define the entities (data) we can extract from the user's speech.
+const EntitiesSchema = z.object({
+  destination: z.string().optional().describe("The user's desired destination, if mentioned."),
+});
+
+// Define the final output structure for our NLU flow.
+export const NiaActionSchema = z.object({
+    intent: IntentSchema.describe("The user's classified intent."),
+    entities: EntitiesSchema.describe("Any specific information extracted from the prompt."),
+    responseText: z.string().describe("A natural language response to speak back to the user for confirmation or clarification."),
+});
+export type NiaAction = z.infer<typeof NiaActionSchema>;
+
+
+const niaActionPrompt = ai.definePrompt({
+    name: 'niaActionPrompt',
+    input: { schema: SimpleInputSchema },
+    output: { schema: NiaActionSchema },
+    prompt: `You are NIA, a voice-activated AI ride assistant. Your job is to understand user commands and convert them into structured data.
+
+    Analyze the user's transcript and determine their intent.
+
+    Intents:
+    - RIDE_REQUEST: User wants to book a ride. Extract the destination.
+    - SOS_REQUEST: User is in an emergency. Keywords: help, danger, problem, bachao, madad.
+    - CANCEL_RIDE: User wants to cancel their current ride.
+    - CONFIRMATION_YES: User is confirming a previous action. Keywords: yes, yeah, haan, confirm, okay, please proceed.
+    - CONFIRMATION_NO: User is rejecting a previous action. Keywords: no, nope, nahi, cancel.
+    - UNKNOWN: The intent is unclear or conversational.
+
+    Your Task:
+    1.  Classify the user's 'prompt' into one of the defined intents.
+    2.  If the intent is RIDE_REQUEST, extract the destination into the 'entities.destination' field.
+    3.  Generate a concise 'responseText' to confirm the action or ask for clarification. For ride requests, ask for confirmation. For SOS, confirm you're getting help. For unknown, say you're on standby.
+
+    Examples:
+    - User: "NIA book a ride to DLF Cyberhub" -> { "intent": "RIDE_REQUEST", "entities": { "destination": "DLF Cyberhub" }, "responseText": "Booking a ride to D L F Cyberhub. Is that correct?" }
+    - User: "NIA mujhe Huda City Center jana hai" -> { "intent": "RIDE_REQUEST", "entities": { "destination": "Huda City Center" }, "responseText": "Booking a ride to Huda City Center. Is that correct?" }
+    - User: "NIA help me" -> { "intent": "SOS_REQUEST", "entities": {}, "responseText": "Emergency detected. Activating safety protocols." }
+    - User: "yes confirm" -> { "intent": "CONFIRMATION_YES", "entities": {}, "responseText": "Confirmed." }
+    - User: "what's the weather like" -> { "intent": "UNKNOWN", "entities": {}, "responseText": "I am here for your safety and ride requests. How can I help?" }
+
+    User Transcript:
+    "{{prompt}}"
+    `,
+});
+
+export const niaActionFlow = ai.defineFlow(
+    {
+        name: 'niaActionFlow',
+        inputSchema: SimpleInputSchema,
+        outputSchema: NiaActionSchema,
+    },
+    async (prompt) => {
+        const { output } = await niaActionPrompt(prompt);
+        return output!;
+    }
 );

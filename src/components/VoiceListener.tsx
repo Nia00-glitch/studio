@@ -6,86 +6,14 @@ import React, { useEffect, useCallback } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '@/lib/firebase'; // Correctly import the initialized Firebase app
-import type { EmergencyDecision, SimpleInput } from '@/lib/types'; // Correctly import the shared type
-
 
 const VoiceListener = () => {
-  const { 
-    triggerEmergency, 
-    startRecording, 
-    stopRecording, 
+  const {
     isEmergencyActive,
-    setIsListening
+    setIsListening,
+    processVoiceCommand, // The new handler from context
   } = useEmergencyContext();
   const { toast } = useToast();
-  
-  const speak = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      // You could add language selection here in the future
-      // utterance.lang = 'en-IN'; 
-      window.speechSynthesis.speak(utterance);
-    } else {
-      console.warn("Browser does not support speech synthesis.");
-    }
-  };
-
-  const emergencyCallback = useCallback(async (spokenPhrase: string) => {
-    if (!isEmergencyActive && spokenPhrase) {
-      console.log('Passing to AI:', spokenPhrase);
-      try {
-        const functions = getFunctions(app);
-        // Correctly typed httpsCallable
-        const simpleGenerate = httpsCallable<SimpleInput, EmergencyDecision>(functions, 'simpleGenerate');
-        
-        const result = await simpleGenerate({ prompt: spokenPhrase });
-        const aiResponse = result.data;
-        
-        console.log("AI Response:", aiResponse);
-        speak(aiResponse.responseText);
-
-        if (aiResponse.activateEmergency) {
-          triggerEmergency({ silent: true }); // Trigger silently as AI provides spoken feedback
-        }
-      } catch (error) {
-        console.error("Error calling httpsCallable function:", error);
-        toast({
-          variant: "destructive",
-          title: "AI Error",
-          description: "Could not connect to the AI assistant."
-        });
-      }
-    }
-  }, [isEmergencyActive, triggerEmergency, toast]);
-
-  const startRecordingCallback = useCallback(() => {
-      startRecording();
-      speak("Recording started.");
-  }, [startRecording]);
-
-  const stopRecordingCallback = useCallback(() => {
-      stopRecording();
-      speak("Recording stopped.");
-  }, [stopRecording]);
-
-  // Specific commands that are not ambiguous are kept.
-  // Ambiguous commands like "help" are sent to the AI.
-  const commands = [
-      {
-        command: ['NIA start recording', 'NIA recording start karo', 'start recording'],
-        callback: startRecordingCallback,
-        isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8
-      },
-      {
-        command: ['NIA stop recording', 'NIA recording band karo', 'stop recording'],
-        callback: stopRecordingCallback,
-        isFuzzyMatch: true,
-        fuzzyMatchingThreshold: 0.8
-      }
-    ];
 
   const {
     listening,
@@ -93,15 +21,18 @@ const VoiceListener = () => {
     isMicrophoneAvailable,
     finalTranscript,
     resetTranscript
-  } = useSpeechRecognition({ commands });
+  } = useSpeechRecognition();
 
-  // Effect to send final transcript to AI for analysis
+  // Effect to send final transcript to the central command processor in the context
   useEffect(() => {
-    if (finalTranscript) {
-        emergencyCallback(finalTranscript);
-        resetTranscript(); // Reset after processing
+    if (finalTranscript && !isEmergencyActive) {
+        // Only process if a wake word is detected to avoid sending every spoken word.
+        if (finalTranscript.toLowerCase().startsWith('nia')) {
+             processVoiceCommand(finalTranscript);
+        }
+        resetTranscript(); // Reset after processing to be ready for the next command.
     }
-  }, [finalTranscript, emergencyCallback, resetTranscript]);
+  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive]);
 
 
   useEffect(() => {
@@ -129,7 +60,7 @@ const VoiceListener = () => {
 
     const startListening = () => {
         // Here you could add logic to switch language, e.g., from a settings context
-        const language = 'en-IN';
+        const language = 'en-IN'; // Set to Indian English for better Hinglish recognition
         SpeechRecognition.startListening({ continuous: true, language }).catch(err => {
             console.error('Could not start listening:', err);
             if (err.name === 'NotAllowedError') {
