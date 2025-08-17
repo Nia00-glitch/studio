@@ -53,7 +53,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     isOnline, 
     voiceCommandState,
     setVoiceCommandState,
-    handleCancelRide: contextCancelRide, // Renaming to avoid conflict
   } = useEmergencyContext();
 
   const { logout, user, userProfile } = useAuth();
@@ -122,7 +121,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                 break;
         }
     }
-  }, [voiceCommandState]); // Re-run this logic whenever the voice state changes
+  }, [voiceCommandState, activeRide, triggerEmergency, setVoiceCommandState]); // Re-run this logic whenever the voice state changes
 
 
   useEffect(() => {
@@ -250,8 +249,75 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
   if (isEmergencyActive) { return <EmergencyScreen />; }
   
-  const renderRiderStatus = () => { /* ... (no changes needed here) ... */ };
-  const renderDriverStatus = () => { /* ... (no changes needed here) ... */ };
+  const renderRiderUI = () => {
+    if (activeRide) {
+        return (
+            <Card className="w-full">
+                <CardHeader>
+                    <CardTitle>Ride in Progress</CardTitle>
+                    <CardDescription>
+                        {activeRide.status === 'accepted' && `Your driver, ${activeRide.driverName}, is on the way.`}
+                        {activeRide.status === 'in-progress' && `Heading to ${activeRide.destinationAddress}.`}
+                        {activeRide.status === 'pending' && `Searching for a driver...`}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button variant="destructive" onClick={handleCancelRide}>Cancel Ride</Button>
+                </CardContent>
+            </Card>
+        )
+    }
+    return (
+        <Card className="w-full">
+            <CardHeader>
+                <CardTitle>Where to?</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={(e) => { e.preventDefault(); handleRequestRide(); }} className="space-y-4">
+                    <Input placeholder="Enter destination" value={destination} onChange={(e) => setDestination(e.target.value)} />
+                    <Button type="submit" className="w-full" disabled={isRequesting || !destination}>
+                        {isRequesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Request Ride'}
+                    </Button>
+                </form>
+            </CardContent>
+        </Card>
+    );
+  };
+  
+  const renderDriverUI = () => {
+    if (pendingRideForDriver) {
+        return (
+            <RideRequestCard 
+                ride={pendingRideForDriver} 
+                onAccept={() => handleRideDecision(pendingRideForDriver.id, 'accepted')}
+                onDecline={() => handleRideDecision(pendingRideForDriver.id, 'declined')}
+            />
+        )
+    }
+    if (activeRide) {
+        return (
+             <Card className="w-full">
+                <CardHeader>
+                    <CardTitle>Ride in Progress</CardTitle>
+                    <CardDescription>
+                       Pickup: {activeRide.pickupLocation.address || '...'} <br/>
+                       Destination: {activeRide.destinationAddress}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button className="w-full bg-green-500 hover:bg-green-600" onClick={handleCompleteRide}>Complete Ride</Button>
+                    <Button variant="destructive" className="w-full mt-2" onClick={handleCancelRide}>Cancel Ride</Button>
+                </CardContent>
+            </Card>
+        )
+    }
+    return (
+        <div className="flex items-center space-x-2">
+          <Switch id="driver-status" checked={isOnlineAsDriver} onCheckedChange={handleDriverStatusChange} />
+          <Label htmlFor="driver-status">{isOnlineAsDriver ? "You are Online" : "Go Online to receive requests"}</Label>
+        </div>
+    );
+  };
 
   const getMapPropsForRole = useCallback(() => {
     if (role === 'rider' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
@@ -279,7 +345,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
       <footer className="p-4 border-t bg-background shadow-lg z-10">
         <div className="container mx-auto max-w-4xl">
-            {/* ... (no changes to driver/rider UI needed in this step) ... */}
+            {role === 'rider' ? renderRiderUI() : renderDriverUI()}
         </div>
       </footer>
     </div>
