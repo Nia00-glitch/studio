@@ -101,6 +101,11 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const mediaChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
 
+  const triggerEmergency = useCallback((options?: { silent: boolean }) => {
+    if (!options?.silent) toast({ title: "Emergency Mode Activated" });
+    setIsEmergencyActive(true);
+  }, [toast]);
+
   const speak = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel(); // Interrupt any ongoing speech
@@ -141,7 +146,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
           description: "Could not connect to the AI assistant."
         });
     }
-  }, [speak, toast, triggerEmergency]); // triggerEmergency was missing
+  }, [speak, toast, triggerEmergency]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -209,11 +214,6 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     }
   }, [isRecording, settings.enableRecording, toast, isOnline, isEmergencyActive]);
 
-  const triggerEmergency = useCallback((options?: { silent: boolean }) => {
-    if (!options?.silent) toast({ title: "Emergency Mode Activated" });
-    setIsEmergencyActive(true);
-  }, [toast]);
-
   const deactivateEmergency = useCallback(() => {
     if (isRecording) stopRecording();
     toast({ title: "Emergency Mode Deactivated" });
@@ -249,5 +249,3 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;
 };
-
-    
