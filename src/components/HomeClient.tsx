@@ -1,6 +1,7 @@
 
 "use client";
 
+import 'regenerator-runtime/runtime';
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { Settings, Mic, WifiOff, AlertTriangle, LogOut, Loader2, Car, MapPin } from "lucide-react";
@@ -489,5 +490,3 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
-
-    
