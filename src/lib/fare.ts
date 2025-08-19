@@ -3,7 +3,6 @@
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '@/lib/firebase';
-import type { FareEstimates } from './types';
 
 interface FareQuoteInput {
     pickup: { lat: number; lng: number };
@@ -11,43 +10,34 @@ interface FareQuoteInput {
 }
 
 interface FareQuoteResponse {
-    ok: boolean;
+    success: boolean;
+    fare?: number;
     distanceKm?: number;
     durationMin?: number;
-    estimates?: {
-        cab: number;
-        auto: number;
-        bike: number;
-    };
     code?: 'DIRECTIONS_FAILED' | 'BAD_INPUT';
     message?: string;
 }
 
 /**
- * Calls the `estimateFare` Firebase Cloud Function to get fare quotes.
+ * Calls the `estimateFare` Firebase Cloud Function to get a fare quote.
  * @param pickup - The pickup coordinates.
  * @param drop - The drop-off coordinates.
- * @returns A promise that resolves to the fare estimates.
+ * @returns A promise that resolves to the fare details.
  * @throws An error if the call fails or returns an error response.
  */
-export async function getFareQuote(pickup: { lat: number; lng: number }, drop: { lat: number; lng: number }): Promise<FareEstimates> {
+export async function getFareQuote(pickup: { lat: number; lng: number }, drop: { lat: number; lng: number }): Promise<FareQuoteResponse> {
     const functions = getFunctions(app);
-    // Ensure the function name here 'estimateFare' matches the exported name in `functions/src/index.ts`.
     const estimateFareCallable = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
 
     try {
         const result = await estimateFareCallable({ pickup, drop });
         const data = result.data;
 
-        if (!data.ok || !data.estimates) {
+        if (!data.success) {
             throw new Error(data.message || 'Failed to get fare estimates.');
         }
 
-        return {
-            distanceKm: data.distanceKm!,
-            durationMin: data.durationMin!,
-            estimates: data.estimates,
-        };
+        return data;
 
     } catch (error) {
         console.error("Error calling estimateFare function:", error);
