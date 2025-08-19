@@ -73,78 +73,83 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     IDLE_LOCATION_UPDATE_INTERVAL
   );
 
+  // --- Voice Dialog State Machine ---
   useEffect(() => {
     const { status, lastAction } = voiceCommandState;
     if (status !== 'awaiting_confirmation' || !lastAction) return;
   
-    if (voiceDialogState.status === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
-      if (!location) {
-        speak("I need your location to book a ride. Please enable location services.");
-        setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' });
-        return;
-      }
-      setVoiceDialogState({ status: 'PARSING' });
-      const dest = lastAction.entities.destination;
-  
-      // NOTE: For simplicity, we are not implementing geocoding for a text-based destination.
-      // In a real app, you would geocode `dest` to get its lat/lng before calling getFareQuote.
-      // For this MVP, we use a placeholder for the destination coordinates.
-      // This will still fail if Directions API can't find a route, which is intended.
-      const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
-  
-      getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination)
-        .then(fares => {
-          speak(`I found fares to ${dest}. Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
-          setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: dest, fares, pickup: location });
-        })
-        .catch(err => {
-          speak(`Sorry, I couldn't get fares for ${dest}. Please try another destination.`);
-          setVoiceDialogState({ status: 'ERROR', message: err.message });
-        });
-    }
-    
-    else if (voiceDialogState.status === 'AWAITING_MODE_CONFIRMATION') {
-      const transcript = (lastAction.prompt || '').toLowerCase();
-      let mode: 'cab' | 'auto' | 'bike' | null = null;
-      if (transcript.includes('cab') || transcript.includes('car') || transcript.includes('gaadi')) mode = 'cab';
-      else if (transcript.includes('auto')) mode = 'auto';
-      else if (transcript.includes('bike')) mode = 'bike';
-      
-      if (mode) {
-        const priceEstimate = voiceDialogState.fares.estimates[mode];
-        speak(`${mode} for ${priceEstimate} rupees. Should I confirm?`);
-        setVoiceDialogState({
-          ...voiceDialogState,
-          status: 'AWAITING_FINAL_CONFIRMATION',
-          mode,
-          priceEstimate
-        });
-      } else {
-        speak("Sorry, I didn't catch that. Please say cab, auto, or bike.");
-      }
-    }
+    const processAction = async () => {
+        // 1. RIDE_REQUEST Intent: Start the booking flow
+        if (voiceDialogState.status === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
+            if (!location) {
+                speak("I need your location to book a ride. Please enable location services.");
+                setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' });
+                return;
+            }
+            setVoiceDialogState({ status: 'PARSING' });
+            const dest = lastAction.entities.destination;
 
-    else if (voiceDialogState.status === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
-      setVoiceDialogState({ status: 'EXECUTING' });
-      speak("Okay, booking your ride now.");
-      handleRequestRide(voiceDialogState.destination, voiceDialogState.mode, voiceDialogState.priceEstimate);
-    }
+            // In a real app, you'd geocode the destination. For now, we use a placeholder for drop-off.
+            // This is a simplification; a production app would need a geocoding service.
+            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
 
-    else if (lastAction.intent === 'CONFIRMATION_NO' || lastAction.intent === 'CANCEL_RIDE') {
-      speak("Okay, cancelling the request.");
-      setVoiceDialogState({ status: 'IDLE' });
-    }
+            try {
+                const fares = await getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination);
+                speak(`I found fares to ${dest}. Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
+                setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: dest, fares, pickup: location });
+            } catch (err: any) {
+                speak(`Sorry, I couldn't get fares for ${dest}. Please try another destination.`);
+                setVoiceDialogState({ status: 'ERROR', message: err.message });
+            }
+        }
+        
+        // 2. AWAITING_MODE_CONFIRMATION: User has stated their preferred vehicle
+        else if (voiceDialogState.status === 'AWAITING_MODE_CONFIRMATION') {
+            const transcript = (lastAction.prompt || '').toLowerCase();
+            let mode: 'cab' | 'auto' | 'bike' | null = null;
+            if (transcript.includes('cab') || transcript.includes('car') || transcript.includes('gaadi')) mode = 'cab';
+            else if (transcript.includes('auto')) mode = 'auto';
+            else if (transcript.includes('bike')) mode = 'bike';
+            
+            if (mode) {
+                const priceEstimate = voiceDialogState.fares.estimates[mode];
+                speak(`${mode} for ${priceEstimate} rupees. Should I confirm?`);
+                setVoiceDialogState({
+                ...voiceDialogState,
+                status: 'AWAITING_FINAL_CONFIRMATION',
+                mode,
+                priceEstimate
+                });
+            } else {
+                speak("Sorry, I didn't catch that. Please say cab, auto, or bike.");
+            }
+        }
+
+        // 3. AWAITING_FINAL_CONFIRMATION: User says "yes" or "confirm"
+        else if (voiceDialogState.status === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
+            setVoiceDialogState({ status: 'EXECUTING' });
+            speak("Okay, booking your ride now.");
+            await handleRequestRide(voiceDialogState.destination, voiceDialogState.mode, voiceDialogState.priceEstimate);
+        }
+
+        // 4. CANCEL Intent: User cancels the flow
+        else if (lastAction.intent === 'CONFIRMATION_NO' || lastAction.intent === 'CANCEL_RIDE') {
+            speak("Okay, cancelling the request.");
+            setVoiceDialogState({ status: 'IDLE' });
+        }
+    };
     
-    setVoiceCommandState({ status: 'idle' });
+    processAction().finally(() => {
+        setVoiceCommandState({ status: 'idle' });
+    });
   
   }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState]);
+  
   
   useEffect(() => {
       if (role === 'driver' && pendingRideForDriver) {
           const ride = pendingRideForDriver;
-          // In a real app, you would get pickup/destination names via reverse geocoding
           speak(`New ride to ${ride.destinationAddress}. Accept or Decline?`);
-          // Here you would start listening for "accept" or "decline". This is a placeholder for the TTS prompt.
       }
   }, [role, pendingRideForDriver, speak]);
 
@@ -245,8 +250,13 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         mode, priceEstimate,
       });
       setRideId(rideDocRef.id); setDestination("");
+      speak("Your ride has been booked. We are finding a driver for you.");
       setVoiceDialogState({ status: 'IDLE' });
-    } catch (error) { setIsRequesting(false); setVoiceDialogState({ status: 'ERROR', message: 'Failed to create ride doc.'})}
+    } catch (error) { 
+        setIsRequesting(false); 
+        speak("Sorry, there was an error booking your ride. Please try again.");
+        setVoiceDialogState({ status: 'ERROR', message: 'Failed to create ride doc.'});
+    }
   }
 
   const handleRideDecision = async (rideId: string, decision: 'accepted' | 'declined') => {
@@ -381,3 +391,5 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
+
+    

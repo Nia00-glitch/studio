@@ -104,9 +104,11 @@ export type VoiceDialogState =
         status: 'AWAITING_FINAL_CONFIRMATION';
         destination: string;
         pickup: { lat: number; lng: number };
-        fares: FareEstimates; // Keep fares for final confirmation
+        fares: FareEstimates;
         mode: 'cab' | 'auto' | 'bike';
         priceEstimate: number;
     }
     | { status: 'EXECUTING' }
     | { status: 'ERROR'; message: string };
+
+    

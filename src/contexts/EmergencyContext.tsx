@@ -141,7 +141,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
           description: "Could not connect to the AI assistant."
         });
     }
-  }, [speak, toast]); // triggerEmergency was missing
+  }, [speak, toast, triggerEmergency]); // triggerEmergency was missing
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -249,3 +249,5 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;
 };
+
+    
