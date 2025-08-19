@@ -4,11 +4,12 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
 import { DirectionsRequest, Client as MapsClient } from "@googlemaps/google-maps-services-js";
 
-// Define secrets for API keys
-const GOOGLE_MAPS_API_KEY = functions.config().google.maps_api_key ?? process.env.GOOGLE_MAPS_API_KEY;
+// It's recommended to set the API key via secrets or environment variables
+// For example, using Firebase function secrets: `firebase functions:secrets:set GOOGLE_MAPS_API_KEY`
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 if (!GOOGLE_MAPS_API_KEY) {
-  console.error("FATAL ERROR: GOOGLE_MAPS_API_KEY is not set in environment variables or functions config.");
+  console.error("FATAL ERROR: GOOGLE_MAPS_API_KEY is not set as a secret or environment variable.");
 }
 
 const mapsClient = new MapsClient({});
@@ -24,7 +25,7 @@ const FareRequestSchema = z.object({
   drop: LatLngSchema,
 });
 
-// --- Fare Calculation Constants (Configurable) ---
+// --- Fare Calculation Constants (could be moved to Firestore for dynamic config) ---
 const FARE_CONFIG = {
   cab: { base: 40, perKm: 15, perMin: 2 },
   auto: { base: 25, perKm: 11, perMin: 1.5 },
@@ -34,7 +35,7 @@ const FARE_CONFIG = {
 /**
  * A secure, authenticated, and validated HTTPS Callable function to estimate ride fares.
  */
-export const estimateFare = onCall(async (request) => {
+export const estimateFare = onCall({ secrets: ["GOOGLE_MAPS_API_KEY"] }, async (request) => {
   // 1. Authentication Check
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be logged in to request a fare estimate.");

@@ -44,6 +44,7 @@ export const NiaActionSchema = z.object({
     intent: IntentSchema,
     entities: EntitiesSchema,
     responseText: z.string(),
+    prompt: z.string().optional(), // Pass through original prompt for context
 });
 export type NiaAction = z.infer<typeof NiaActionSchema>;
 
@@ -61,7 +62,7 @@ export interface Ride {
     destinationAddress: string;
     status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'no_drivers_available' | 'error';
     requestedAt: any;
-    notifiedDriverId?: string;
+    notifiedDriverId?: string | null;
     driverId?: string;
     driverName?: string;
     driverLive?: {
@@ -73,7 +74,6 @@ export interface Ride {
     acceptedAt?: any;
     completedAt?: any;
     errorMessage?: string;
-    // New fields for voice booking
     mode?: 'cab' | 'auto' | 'bike';
     priceEstimate?: number;
 }
@@ -104,6 +104,7 @@ export type VoiceDialogState =
         status: 'AWAITING_FINAL_CONFIRMATION';
         destination: string;
         pickup: { lat: number; lng: number };
+        fares: FareEstimates; // Keep fares for final confirmation
         mode: 'cab' | 'auto' | 'bike';
         priceEstimate: number;
     }

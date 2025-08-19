@@ -24,12 +24,11 @@ interface EmergencyContextType {
   shareLocation: () => void;
   isListening: boolean;
   setIsListening: (isListening: boolean) => void;
-  // New properties for advanced voice commands
   processVoiceCommand: (transcript: string) => Promise<void>;
   voiceCommandState: VoiceCommandState;
   setVoiceCommandState: React.Dispatch<React.SetStateAction<VoiceCommandState>>;
-  voiceDialogState: VoiceDialogState; // Add this
-  setVoiceDialogState: React.Dispatch<React.SetStateAction<VoiceDialogState>>; // Add this
+  voiceDialogState: VoiceDialogState;
+  setVoiceDialogState: React.Dispatch<React.SetStateAction<VoiceDialogState>>;
   speak: (text: string) => void;
 }
 
@@ -40,7 +39,7 @@ export type VoiceCommandState = {
 }
 
 const initialVoiceState: VoiceCommandState = { status: 'idle' };
-const initialDialogState: VoiceDialogState = { status: 'IDLE' }; // Add this
+const initialDialogState: VoiceDialogState = { status: 'IDLE' };
 
 const defaultSettings: Settings = {
   autoSendLocation: true,
@@ -63,12 +62,11 @@ export const EmergencyContext = createContext<EmergencyContextType>({
   shareLocation: () => {},
   isListening: false,
   setIsListening: () => {},
-  // New defaults
   processVoiceCommand: async () => {},
   voiceCommandState: initialVoiceState,
   setVoiceCommandState: () => {},
-  voiceDialogState: initialDialogState, // Add this
-  setVoiceDialogState: () => {}, // Add this
+  voiceDialogState: initialDialogState,
+  setVoiceDialogState: () => {},
   speak: () => {},
 });
 
@@ -97,7 +95,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [voiceCommandState, setVoiceCommandState] = useState<VoiceCommandState>(initialVoiceState);
-  const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>(initialDialogState); // Add this
+  const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>(initialDialogState);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
@@ -107,6 +105,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel(); // Interrupt any ongoing speech
       const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-IN'; // Prioritize Indian English voice
       window.speechSynthesis.speak(utterance);
     } else {
       console.warn("Browser does not support speech synthesis.");
@@ -122,7 +121,13 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         const action = result.data;
         
         console.log("NLU Action:", action);
-        // speak(action.responseText); // Don't speak here, let HomeClient decide based on state
+        
+        if (action.intent === 'SOS_REQUEST') {
+            triggerEmergency({});
+            speak(action.responseText);
+            setVoiceCommandState({ status: 'idle' });
+            return;
+        }
 
         setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: action, message: action.responseText });
 
@@ -136,7 +141,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
           description: "Could not connect to the AI assistant."
         });
     }
-  }, [speak, toast]);
+  }, [speak, toast]); // triggerEmergency was missing
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);

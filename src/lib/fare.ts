@@ -32,10 +32,11 @@ interface FareQuoteResponse {
  */
 export async function getFareQuote(pickup: { lat: number; lng: number }, drop: { lat: number; lng: number }): Promise<FareEstimates> {
     const functions = getFunctions(app);
-    const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
+    // Ensure the function name here 'estimateFare' matches the exported name in `functions/src/index.ts`.
+    const estimateFareCallable = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
 
     try {
-        const result = await estimateFare({ pickup, drop });
+        const result = await estimateFareCallable({ pickup, drop });
         const data = result.data;
 
         if (!data.ok || !data.estimates) {
