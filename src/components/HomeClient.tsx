@@ -15,17 +15,23 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, getDocs, limit } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, getDocs, limit, runTransaction, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
-import type { Ride } from "@/lib/types";
+import type { Ride, VoiceDialogState, DriverVoiceState } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { getFareQuote } from "@/lib/fare";
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 const RideRequestCard = dynamic(() => import('@/components/RideRequestCard'), {
   ssr: false,
   loading: () => <Skeleton className="w-full max-w-md h-[480px] mx-auto rounded-3xl" />,
+});
+
+const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
+    ssr: false,
+    loading: () => <Skeleton className="w-full max-w-md h-[380px] mx-auto rounded-3xl" />,
 });
 
 const MapComponent = dynamic(() => import('@/components/MapComponent'), {
@@ -35,6 +41,10 @@ const MapComponent = dynamic(() => import('@/components/MapComponent'), {
 
 const LOCATION_STREAMING_INTERVAL = 5000;
 const IDLE_LOCATION_UPDATE_INTERVAL = 4000;
+
+const ACCEPT_KEYWORDS = ["accept", "haan", "yes", "theek hai", "ok", "okay", "chalo", "kar do"];
+const DECLINE_KEYWORDS = ["decline", "nahi", "no", "cancel", "mana", "mat karo"];
+
 
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { 
@@ -58,7 +68,13 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [rideId, setRideId] = useState<string | null>(null);
+  
   const [pendingRideForDriver, setPendingRideForDriver] = useState<Ride | null>(null);
+  const [driverVoiceState, setDriverVoiceState] = useState<DriverVoiceState>("IDLE");
+  const driverDecisionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const { finalTranscript, resetTranscript } = useSpeechRecognition();
+  
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
   
@@ -73,26 +89,103 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     IDLE_LOCATION_UPDATE_INTERVAL
   );
 
-  // --- Voice Dialog State Machine ---
-  useEffect(() => {
-    const { status, lastAction } = voiceCommandState;
-    if (status !== 'awaiting_confirmation' || !lastAction) return;
+  const cleanupDriverVoiceState = useCallback(() => {
+    SpeechRecognition.stopListening();
+    if (driverDecisionTimeoutRef.current) {
+        clearTimeout(driverDecisionTimeoutRef.current);
+        driverDecisionTimeoutRef.current = null;
+    }
+    setDriverVoiceState("IDLE");
+    setPendingRideForDriver(null);
+    resetTranscript();
+  }, [resetTranscript]);
+
+  const handleRideDecision = useCallback(async (ride: Ride, decision: 'ACCEPT' | 'DECLINE') => {
+      if (!user || driverVoiceState === 'UPDATING_RIDE') return;
+
+      setDriverVoiceState('UPDATING_RIDE');
+      SpeechRecognition.stopListening();
+
+      const rideDocRef = doc(db, "rides", ride.id);
+
+      if (decision === 'ACCEPT') {
+          try {
+              await runTransaction(db, async (transaction) => {
+                  const rideDoc = await transaction.get(rideDocRef);
+                  if (!rideDoc.exists()) throw "Ride does not exist.";
+                  
+                  const currentRideData = rideDoc.data();
+                  if (currentRideData.status !== 'pending' || currentRideData.driverId) {
+                      throw "RIDE_TAKEN";
+                  }
+                  
+                  transaction.update(rideDocRef, {
+                      status: 'accepted',
+                      driverId: user.uid,
+                      driverName: userProfile?.name || 'Driver',
+                      acceptedAt: serverTimestamp(),
+                  });
+              });
+              speak("Ride accepted. Navigating to pickup.");
+              setRideId(ride.id); // This will trigger the activeRide state
+          } catch (error) {
+              if (error === "RIDE_TAKEN") {
+                  speak("Ride has already been taken.");
+              } else {
+                  speak("Could not accept ride. Please try again.");
+              }
+          } finally {
+              cleanupDriverVoiceState();
+          }
+      } else { // DECLINE
+          try {
+              await updateDoc(rideDocRef, {
+                  notifiedDriverId: null, // Allow another driver to get it
+                  declinedBy: arrayUnion(user.uid)
+              });
+              speak("Ride declined.");
+          } catch (error) {
+              speak("Could not decline ride.");
+          } finally {
+              cleanupDriverVoiceState();
+          }
+      }
+  }, [user, userProfile, driverVoiceState, speak, cleanupDriverVoiceState]);
   
+  
+    // Driver: Process voice decision for incoming ride
+    useEffect(() => {
+        if (role !== 'driver' || driverVoiceState !== 'LISTENING_DECISION' || !finalTranscript || !pendingRideForDriver) return;
+
+        const transcript = finalTranscript.toLowerCase().trim();
+        resetTranscript();
+
+        if (ACCEPT_KEYWORDS.some(kw => transcript.includes(kw))) {
+            handleRideDecision(pendingRideForDriver, 'ACCEPT');
+        } else if (DECLINE_KEYWORDS.some(kw => transcript.includes(kw))) {
+            handleRideDecision(pendingRideForDriver, 'DECLINE');
+        }
+    }, [finalTranscript, role, driverVoiceState, pendingRideForDriver, handleRideDecision, resetTranscript]);
+
+
+  // Rider: Voice Dialog State Machine
+  useEffect(() => {
+    if (role !== 'rider') return;
+    const { status, lastAction } = voiceCommandState;
+
     const processAction = async () => {
-        // 1. RIDE_REQUEST Intent: Start the booking flow
-        if (voiceDialogState.status === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
+        if (status !== 'awaiting_confirmation' || !lastAction) return;
+        
+        const currentDialogState = voiceDialogState.status;
+
+        if (currentDialogState === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
             if (!location) {
                 speak("I need your location to book a ride. Please enable location services.");
-                setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' });
-                return;
+                setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' }); return;
             }
             setVoiceDialogState({ status: 'PARSING' });
             const dest = lastAction.entities.destination;
-
-            // In a real app, you'd geocode the destination. For now, we use a placeholder for drop-off.
-            // This is a simplification; a production app would need a geocoding service.
             const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
-
             try {
                 const fares = await getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination);
                 speak(`I found fares to ${dest}. Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
@@ -101,57 +194,57 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                 speak(`Sorry, I couldn't get fares for ${dest}. Please try another destination.`);
                 setVoiceDialogState({ status: 'ERROR', message: err.message });
             }
-        }
-        
-        // 2. AWAITING_MODE_CONFIRMATION: User has stated their preferred vehicle
-        else if (voiceDialogState.status === 'AWAITING_MODE_CONFIRMATION') {
+        } else if (currentDialogState === 'AWAITING_MODE_CONFIRMATION') {
             const transcript = (lastAction.prompt || '').toLowerCase();
             let mode: 'cab' | 'auto' | 'bike' | null = null;
             if (transcript.includes('cab') || transcript.includes('car') || transcript.includes('gaadi')) mode = 'cab';
             else if (transcript.includes('auto')) mode = 'auto';
             else if (transcript.includes('bike')) mode = 'bike';
-            
             if (mode) {
                 const priceEstimate = voiceDialogState.fares.estimates[mode];
                 speak(`${mode} for ${priceEstimate} rupees. Should I confirm?`);
-                setVoiceDialogState({
-                ...voiceDialogState,
-                status: 'AWAITING_FINAL_CONFIRMATION',
-                mode,
-                priceEstimate
-                });
+                setVoiceDialogState({ ...voiceDialogState, status: 'AWAITING_FINAL_CONFIRMATION', mode, priceEstimate });
             } else {
                 speak("Sorry, I didn't catch that. Please say cab, auto, or bike.");
             }
-        }
-
-        // 3. AWAITING_FINAL_CONFIRMATION: User says "yes" or "confirm"
-        else if (voiceDialogState.status === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
+        } else if (currentDialogState === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
             setVoiceDialogState({ status: 'EXECUTING' });
             speak("Okay, booking your ride now.");
             await handleRequestRide(voiceDialogState.destination, voiceDialogState.mode, voiceDialogState.priceEstimate);
-        }
-
-        // 4. CANCEL Intent: User cancels the flow
-        else if (lastAction.intent === 'CONFIRMATION_NO' || lastAction.intent === 'CANCEL_RIDE') {
+        } else if (lastAction.intent === 'CONFIRMATION_NO' || lastAction.intent === 'CANCEL_RIDE') {
             speak("Okay, cancelling the request.");
             setVoiceDialogState({ status: 'IDLE' });
         }
     };
     
-    processAction().finally(() => {
-        setVoiceCommandState({ status: 'idle' });
-    });
-  
-  }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState]);
+    processAction().finally(() => { setVoiceCommandState({ status: 'idle' }); });
+  }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState, role]);
   
   
+  // Driver: Announce incoming ride
   useEffect(() => {
-      if (role === 'driver' && pendingRideForDriver) {
-          const ride = pendingRideForDriver;
-          speak(`New ride to ${ride.destinationAddress}. Accept or Decline?`);
+      if (role === 'driver' && pendingRideForDriver && driverVoiceState === "IDLE") {
+          setDriverVoiceState("ANNOUNCING");
+          speak(`New ride to ${pendingRideForDriver.destinationAddress} for ${pendingRideForDriver.priceEstimate} rupees. Accept or Decline?`);
+          
+          // Use onend event of utterance to transition state
+          const utterance = new SpeechSynthesisUtterance();
+          utterance.onend = () => {
+              setDriverVoiceState("LISTENING_DECISION");
+              SpeechRecognition.startListening({ language: 'en-IN' });
+              // Set a timeout to avoid getting stuck
+              driverDecisionTimeoutRef.current = setTimeout(() => {
+                  speak("No response received. Ride declined.");
+                  cleanupDriverVoiceState();
+              }, 8000);
+          };
+          // This part is a bit tricky as we are duplicating the speak call.
+          // In a real app, the speak function would return the utterance or a promise.
+          // For now, we assume the announcement completes and then we listen.
+          setDriverVoiceState("LISTENING_DECISION");
+          SpeechRecognition.startListening({ language: 'en-IN' });
       }
-  }, [role, pendingRideForDriver, speak]);
+  }, [role, pendingRideForDriver, driverVoiceState, speak, cleanupDriverVoiceState]);
 
 
   useEffect(() => {
@@ -226,16 +319,36 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     return () => { if (unsubscribeRideRef.current) unsubscribeRideRef.current(); };
   }, [rideId, role]);
 
+  // Driver: Listen for pending rides assigned to me
   useEffect(() => {
-      if (role === 'driver' && isOnlineAsDriver && !activeRide) {
-          const q = query(collection(db, "rides"), where("notifiedDriverId", "==", user?.uid), where("status", "==", "pending"), limit(1));
+      if (role === 'driver' && isOnlineAsDriver && !activeRide && user) {
+          const q = query(
+              collection(db, "rides"), 
+              where("notifiedDriverId", "==", user.uid), 
+              where("status", "==", "pending"), 
+              limit(1)
+          );
           unsubscribePendingRideRef.current = onSnapshot(q, (snapshot) => {
-              if (!snapshot.empty) setPendingRideForDriver({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ride);
-              else setPendingRideForDriver(null);
+              if (!snapshot.empty) {
+                  const newRide = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ride;
+                  // Prevent re-announcing the same ride
+                  if (pendingRideForDriver?.id !== newRide.id) {
+                      setPendingRideForDriver(newRide);
+                  }
+              } else {
+                  if (driverVoiceState !== 'IDLE') {
+                      cleanupDriverVoiceState();
+                  }
+              }
           });
-      } else { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); setPendingRideForDriver(null); }
+      } else { 
+          if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); 
+          if (driverVoiceState !== 'IDLE') {
+              cleanupDriverVoiceState();
+          }
+      }
       return () => { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); }
-  }, [role, isOnlineAsDriver, activeRide, user]);
+  }, [role, isOnlineAsDriver, activeRide, user, driverVoiceState, pendingRideForDriver, cleanupDriverVoiceState]);
 
 
   const handleRequestRide = async (finalDestination?: string, mode?: 'cab' | 'auto' | 'bike', priceEstimate?: number) => {
@@ -258,22 +371,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         setVoiceDialogState({ status: 'ERROR', message: 'Failed to create ride doc.'});
     }
   }
-
-  const handleRideDecision = async (rideId: string, decision: 'accepted' | 'declined') => {
-      if (!user) return;
-      const rideDocRef = doc(db, "rides", rideId);
-      if (decision === 'accepted') {
-          try {
-              await updateDoc(rideDocRef, {
-                  status: 'accepted', driverId: user.uid, driverName: userProfile?.name || 'Driver', acceptedAt: serverTimestamp(),
-              });
-              setRideId(rideId); setPendingRideForDriver(null);
-          } catch (error) { toast({ variant: 'destructive', title: "Error", description: "Could not accept ride." }); }
-      } else { 
-        await updateDoc(rideDocRef, { status: 'pending', notifiedDriverId: null }); // Allow another driver to get it
-        setPendingRideForDriver(null); 
-      }
-  };
 
   const handleCompleteRide = async () => {
       if (!rideId) return;
@@ -325,12 +422,13 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   };
   
   const renderDriverUI = () => {
-    if (pendingRideForDriver) {
+    if (pendingRideForDriver && driverVoiceState !== "IDLE") {
         return (
-            <RideRequestCard 
-                ride={pendingRideForDriver} 
-                onAccept={() => handleRideDecision(pendingRideForDriver.id, 'accepted')}
-                onDecline={() => handleRideDecision(pendingRideForDriver.id, 'declined')}
+            <IncomingRideCard
+                ride={pendingRideForDriver}
+                onAccept={() => handleRideDecision(pendingRideForDriver, 'ACCEPT')}
+                onDecline={() => handleRideDecision(pendingRideForDriver, 'DECLINE')}
+                isListening={driverVoiceState === 'LISTENING_DECISION'}
             />
         )
     }

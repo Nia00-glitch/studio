@@ -76,6 +76,7 @@ export interface Ride {
     errorMessage?: string;
     mode?: 'cab' | 'auto' | 'bike';
     priceEstimate?: number;
+    declinedBy?: string[];
 }
 
 // Types for Fare Estimation
@@ -89,7 +90,7 @@ export interface FareEstimates {
     };
 }
 
-// Types for Voice Dialog State Machine
+// Types for Rider Voice Dialog State Machine
 export type VoiceDialogState = 
     | { status: 'IDLE' }
     | { status: 'LISTENING' }
@@ -110,5 +111,16 @@ export type VoiceDialogState =
     }
     | { status: 'EXECUTING' }
     | { status: 'ERROR'; message: string };
+
+// Types for Driver Voice Dialog State Machine
+export type DriverVoiceState =
+    | "IDLE"
+    | "ANNOUNCING"
+    | "LISTENING_DECISION"
+    | "UPDATING_RIDE"
+    | "DONE"
+    | "FAILED";
+
+export type VoiceDecision = "ACCEPT" | "DECLINE";
 
     
