@@ -1,19 +1,11 @@
 
-
 import { onCallGenkit } from '@genkit-ai/firebase';
 import { emergencyFlow, niaActionFlow } from './simple-flow';
-import { estimateFare } from './estimateFare';
-import * as functions from 'firebase-functions';
-import { notifyDriverOnRideRequest } from './notifications';
+import { estimateFare as estimateFareV1 } from './estimateFare';
 
-// Note: admin.initializeApp() is now handled in common.ts to avoid multiple initializations.
-
+// Genkit-powered Cloud Functions
 export const simpleGenerate = onCallGenkit({}, emergencyFlow);
 export const niaAction = onCallGenkit({}, niaActionFlow);
-export { estimateFare };
 
-
-// Native Firestore-triggered function for ride requests
-export const onRideRequest = functions.firestore
-  .document('rides/{rideId}')
-  .onCreate(notifyDriverOnRideRequest);
+// Standard HTTPS Callable Cloud Function (renamed to avoid conflict)
+export const estimateFare = estimateFareV1;

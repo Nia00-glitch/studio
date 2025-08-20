@@ -26,9 +26,9 @@ const FareRequestSchema = z.object({
 
 // --- Fare Calculation Constants (Configurable) ---
 const FARE_CONFIG = {
-  cab: { base: 40, perKm: 15, perMin: 2 },
-  auto: { base: 25, perKm: 11, perMin: 1.5 },
-  bike: { base: 15, perKm: 8, perMin: 1 },
+  cab: { base: 50, perKm: 12, perMin: 2 },
+  auto: { base: 30, perKm: 8, perMin: 1.5 },
+  bike: { base: 20, perKm: 6, perMin: 1 },
 };
 
 /**
