@@ -122,5 +122,3 @@ export type DriverVoiceState =
     | "FAILED";
 
 export type VoiceDecision = "ACCEPT" | "DECLINE";
-
-    
