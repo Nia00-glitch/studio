@@ -42,6 +42,7 @@ const MapComponent = dynamic(() => import('@/components/MapComponent'), {
 
 const LOCATION_STREAMING_INTERVAL = 5000;
 const IDLE_LOCATION_UPDATE_INTERVAL = 4000;
+const DRIVER_DECISION_TIMEOUT = 10000; // 10 seconds
 
 const ACCEPT_KEYWORDS = ["accept", "haan", "yes", "theek hai", "ok", "okay", "chalo", "kar do"];
 const DECLINE_KEYWORDS = ["decline", "nahi", "no", "cancel", "mana", "mat karo"];
@@ -128,7 +129,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                   });
               });
               speak("Ride accepted. Navigating to pickup.");
-              setRideId(ride.id); // This will trigger the activeRide state
+              setRideId(ride.id); 
           } catch (error) {
               if (error === "RIDE_TAKEN") {
                   speak("Ride has already been taken.");
@@ -141,7 +142,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       } else { // DECLINE
           try {
               await updateDoc(rideDocRef, {
-                  notifiedDriverId: null, // Allow another driver to get it
                   declinedBy: arrayUnion(user.uid)
               });
               speak("Ride declined.");
@@ -153,12 +153,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       }
   }, [user, userProfile, driverVoiceState, speak, cleanupDriverVoiceState]);
   
-  
     // Driver: Process voice decision for incoming ride
     useEffect(() => {
         if (role !== 'driver' || driverVoiceState !== 'LISTENING_DECISION' || !finalTranscript || !pendingRideForDriver) return;
-
         const transcript = finalTranscript.toLowerCase().trim();
+        if (!transcript) return;
         resetTranscript();
 
         if (ACCEPT_KEYWORDS.some(kw => transcript.includes(kw))) {
@@ -180,19 +179,20 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         const currentDialogState = voiceDialogState.status;
 
         if (currentDialogState === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
-            if (!location) {
-                speak("I need your location to book a ride. Please enable location services.");
-                setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' }); return;
-            }
+            if (!location) { speak("I need your location to book a ride. Please enable location services."); setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' }); return; }
+            if (!isOnline) { speak("You seem to be offline. Please check your connection."); setVoiceDialogState({ status: 'IDLE' }); return; }
+            
             setVoiceDialogState({ status: 'PARSING' });
             const dest = lastAction.entities.destination;
-            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 }; // In a real app, geocode 'dest'
+            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
             try {
                 const fares = await getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination);
+                if (!fares) throw new Error("Could not retrieve fare information.");
                 speak(`Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
                 setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: dest, fares, pickup: location });
             } catch (err: any) {
-                speak(`Sorry, I couldn't get fares for ${dest}. Please try another destination.`);
+                if(err.message?.includes("DIRECTIONS_FAILED")) { speak(`Sorry, I couldn't find a route to ${dest}. Please try another destination.`); }
+                else { speak(`Sorry, I couldn't get fares for ${dest}. Please try again.`); }
                 setVoiceDialogState({ status: 'ERROR', message: err.message });
             }
         } else if (currentDialogState === 'AWAITING_MODE_CONFIRMATION') {
@@ -205,9 +205,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                 const priceEstimate = voiceDialogState.fares.estimates[mode];
                 speak(`${mode} for ${priceEstimate} rupees. Should I confirm?`);
                 setVoiceDialogState({ ...voiceDialogState, status: 'AWAITING_FINAL_CONFIRMATION', mode, priceEstimate });
-            } else {
-                speak("Sorry, I didn't catch that. Please say cab, auto, or bike.");
-            }
+            } else { speak("Sorry, I didn't catch that. Please say cab, auto, or bike."); }
         } else if (currentDialogState === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
             setVoiceDialogState({ status: 'EXECUTING' });
             speak("Okay, booking your ride now.");
@@ -219,7 +217,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     };
     
     processAction().finally(() => { setVoiceCommandState({ status: 'idle' }); });
-  }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState, role]);
+  }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState, role, isOnline]);
   
   
   // Driver: Announce incoming ride
@@ -228,40 +226,26 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
           setDriverVoiceState("ANNOUNCING");
           speak(`New ride to ${pendingRideForDriver.destinationAddress} for ${pendingRideForDriver.priceEstimate} rupees. Accept or Decline?`);
           
-          // Use onend event of utterance to transition state
-          const utterance = new SpeechSynthesisUtterance();
-          utterance.onend = () => {
+          setTimeout(() => {
               setDriverVoiceState("LISTENING_DECISION");
               SpeechRecognition.startListening({ language: 'en-IN' });
-              // Set a timeout to avoid getting stuck
               driverDecisionTimeoutRef.current = setTimeout(() => {
                   speak("No response received. Ride declined.");
-                  cleanupDriverVoiceState();
-              }, 8000);
-          };
-          // This part is a bit tricky as we are duplicating the speak call.
-          // In a real app, the speak function would return the utterance or a promise.
-          // For now, we assume the announcement completes and then we listen.
-          setDriverVoiceState("LISTENING_DECISION");
-          SpeechRecognition.startListening({ language: 'en-IN' });
+                  handleRideDecision(pendingRideForDriver, 'DECLINE');
+              }, DRIVER_DECISION_TIMEOUT);
+          }, 4000); // Give TTS time to speak
       }
-  }, [role, pendingRideForDriver, driverVoiceState, speak, cleanupDriverVoiceState]);
+  }, [role, pendingRideForDriver, driverVoiceState, speak, cleanupDriverVoiceState, handleRideDecision]);
 
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser."); return;
-    }
+    if (!navigator.geolocation) { setLocationError("Geolocation is not supported by your browser."); return; }
     const handleSuccess = (position: GeolocationPosition) => {
       const { latitude, longitude } = position.coords;
       setLocation({ lat: latitude, lng: longitude }); setLocationError(null);
-      if (role === 'driver' && isOnlineAsDriver && !activeRide) {
-        debouncedUpdateDriverLocation(latitude, longitude);
-      }
+      if (role === 'driver' && isOnlineAsDriver && !activeRide) { debouncedUpdateDriverLocation(latitude, longitude); }
     };
-    const handleError = (error: GeolocationPositionError) => {
-      setLocationError("Location permission denied. Please enable it to use the app.");
-    };
+    const handleError = (error: GeolocationPositionError) => { setLocationError("Location permission denied. Please enable it to use the app."); };
     const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
     generalLocationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
     return () => { if (generalLocationWatcherRef.current !== null) navigator.geolocation.clearWatch(generalLocationWatcherRef.current); };
@@ -332,21 +316,14 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
           unsubscribePendingRideRef.current = onSnapshot(q, (snapshot) => {
               if (!snapshot.empty) {
                   const newRide = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ride;
-                  // Prevent re-announcing the same ride
-                  if (pendingRideForDriver?.id !== newRide.id) {
-                      setPendingRideForDriver(newRide);
-                  }
+                  if (pendingRideForDriver?.id !== newRide.id) { setPendingRideForDriver(newRide); }
               } else {
-                  if (driverVoiceState !== 'IDLE') {
-                      cleanupDriverVoiceState();
-                  }
+                  if (driverVoiceState !== 'IDLE') { cleanupDriverVoiceState(); }
               }
           });
       } else { 
           if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); 
-          if (driverVoiceState !== 'IDLE') {
-              cleanupDriverVoiceState();
-          }
+          if (driverVoiceState !== 'IDLE') { cleanupDriverVoiceState(); }
       }
       return () => { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); }
   }, [role, isOnlineAsDriver, activeRide, user, driverVoiceState, pendingRideForDriver, cleanupDriverVoiceState]);
@@ -361,7 +338,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         riderId: user.uid, riderName: userProfile?.name || "Rider",
         pickupLocation: { latitude: location.lat, longitude: location.lng },
         destinationAddress: destinationToUse, status: "pending", requestedAt: serverTimestamp(),
-        mode, priceEstimate,
+        mode, priceEstimate, declinedBy: [],
       });
       setRideId(rideDocRef.id); setDestination("");
       speak("Your ride has been booked. We are finding a driver for you.");
@@ -397,6 +374,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                         {activeRide.status === 'accepted' && `Your driver, ${activeRide.driverName}, is on the way.`}
                         {activeRide.status === 'in-progress' && `Heading to ${activeRide.destinationAddress}.`}
                         {activeRide.status === 'pending' && `Searching for a driver...`}
+                        {activeRide.status === 'no_drivers_available' && `Sorry, no drivers were available.`}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -439,7 +417,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
                 <CardHeader>
                     <CardTitle>Ride in Progress</CardTitle>
                     <CardDescription>
-                       Pickup: {activeRide.pickupLocation.address || '...'} <br/>
                        Destination: {activeRide.destinationAddress}
                     </CardDescription>
                 </CardHeader>

@@ -44,7 +44,8 @@ export const estimateFare = onCall(async (request) => {
   const validation = FareRequestSchema.safeParse(request.data);
   if (!validation.success) {
     console.error("Invalid input for estimateFare:", validation.error.issues);
-    throw new HttpsError("invalid-argument", "The data provided is not in the correct format.", validation.error.format());
+    // Return a structured error for the client to handle
+    return { ok: false, code: "BAD_INPUT", message: "Invalid location data provided." };
   }
   const { pickup, drop } = validation.data;
 
@@ -64,15 +65,17 @@ export const estimateFare = onCall(async (request) => {
   try {
     const response = await mapsClient.directions(directionsRequest);
     const route = response.data.routes[0];
-    if (!route || !route.legs[0]) {
-      throw new Error("No valid route found.");
+    if (!route || !route.legs[0] || !route.legs[0].distance || !route.legs[0].duration) {
+      // This is a valid response, but no route was found.
+      return { ok: false, code: "DIRECTIONS_FAILED", message: "No valid route could be found between the locations." };
     }
     const leg = route.legs[0];
-    distanceMeters = leg.distance?.value || 0;
-    durationSeconds = leg.duration?.value || 0;
-  } catch (error) {
+    distanceMeters = leg.distance.value;
+    durationSeconds = leg.duration.value;
+  } catch (error: any) {
     console.error("Google Directions API call failed:", error);
-    throw new HttpsError("internal", "Could not calculate the route.", { code: "DIRECTIONS_FAILED" });
+    // This indicates a more fundamental API issue (e.g., bad key, quota exceeded).
+    throw new HttpsError("internal", "Could not calculate the route due to a server error.", { code: "GOOGLE_API_ERROR" });
   }
 
   // 4. Calculate Fares
