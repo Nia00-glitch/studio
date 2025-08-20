@@ -35,11 +35,6 @@ const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), 
     loading: () => <Skeleton className="w-full max-w-md h-[380px] mx-auto rounded-3xl" />,
 });
 
-const MapComponent = dynamic(() => import('@/components/MapComponent'), {
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>,
-});
-
 const LOCATION_STREAMING_INTERVAL = 5000;
 const IDLE_LOCATION_UPDATE_INTERVAL = 4000;
 const DRIVER_DECISION_TIMEOUT = 10000; // 10 seconds
@@ -435,13 +430,6 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     );
   };
 
-  const getMapPropsForRole = useCallback(() => {
-    if (role === 'rider' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
-        return { center: location, activeRide: activeRide, role: 'rider' as const };
-    }
-    return { center: location, drivers: role === 'rider' ? drivers : [], role: role };
-  }, [role, activeRide, location, drivers]);
-
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-gradient-to-b from-black/20 to-transparent">
@@ -456,7 +444,15 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       <main className="flex-grow relative">
         {locationError && <div className="absolute inset-0 flex flex-col items-center justify-center bg-background z-20 p-4 text-center"><Alert variant="destructive" className="max-w-md"><AlertTriangle className="h-4 w-4" /><AlertTitle>Location Error</AlertTitle><AlertDescription>{locationError}</AlertDescription></Alert></div>}
         {!location && !locationError && <div className="absolute inset-0 flex items-center justify-center bg-background z-20"><Loader2 className="h-8 w-8 animate-spin" /><p className="ml-4">Getting your location...</p></div>}
-        {location && <MapComponent {...getMapPropsForRole()} />}
+        
+        {/* Placeholder for the map */}
+        <div className="flex items-center justify-center h-full bg-muted">
+            <div className="text-center p-8">
+                <Car className="mx-auto h-12 w-12 text-muted-foreground" />
+                <h2 className="mt-4 text-xl font-semibold">Map System Removed</h2>
+                <p className="mt-2 text-muted-foreground">The map will be rebuilt here.</p>
+            </div>
+        </div>
       </main>
 
       <footer className="p-4 border-t bg-background shadow-lg z-10">

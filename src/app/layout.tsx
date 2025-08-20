@@ -26,7 +26,6 @@ export default function RootLayout({
         {/* Preconnect to critical origins */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://maps.googleapis.com" />
       </head>
       <body className={`${inter.variable} font-body antialiased`}>
         <ClientProviders>{children}</ClientProviders>
