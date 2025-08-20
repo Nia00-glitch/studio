@@ -186,10 +186,10 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             }
             setVoiceDialogState({ status: 'PARSING' });
             const dest = lastAction.entities.destination;
-            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
+            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 }; // In a real app, geocode 'dest'
             try {
                 const fares = await getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination);
-                speak(`I found fares to ${dest}. Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
+                speak(`Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
                 setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: dest, fares, pickup: location });
             } catch (err: any) {
                 speak(`Sorry, I couldn't get fares for ${dest}. Please try another destination.`);

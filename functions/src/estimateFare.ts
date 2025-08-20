@@ -1,68 +1,101 @@
 
 import * as functions from "firebase-functions";
-import { HttpsError } from "firebase-functions/v2/https";
-import * as z from "zod";
-import fetch from "node-fetch";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { z } from "zod";
+import { DirectionsRequest, Client as MapsClient } from "@googlemaps/google-maps-services-js";
 
-const apiKey = functions.config().google.maps_api_key;
+// Define secrets for API keys
+const GOOGLE_MAPS_API_KEY = functions.config().google.maps_api_key ?? process.env.GOOGLE_MAPS_API_KEY;
 
-const FareRequestSchema = z.object({
-  pickup: z.object({
-    lat: z.number(),
-    lng: z.number(),
-  }),
-  drop: z.object({
-    lat: z.number(),
-    lng: z.number(),
-  }),
+if (!GOOGLE_MAPS_API_KEY) {
+  console.error("FATAL ERROR: GOOGLE_MAPS_API_KEY is not set in environment variables or functions config.");
+}
+
+const mapsClient = new MapsClient({});
+
+// --- Zod Schemas for Input Validation ---
+const LatLngSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
 });
 
-export const estimateFare = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+const FareRequestSchema = z.object({
+  pickup: LatLngSchema,
+  drop: LatLngSchema,
+});
+
+// --- Fare Calculation Constants (Configurable) ---
+const FARE_CONFIG = {
+  cab: { base: 50, perKm: 12, perMin: 2 },
+  auto: { base: 30, perKm: 8, perMin: 1.5 },
+  bike: { base: 20, perKm: 6, perMin: 1 },
+};
+
+/**
+ * A secure, authenticated, and validated HTTPS Callable function to estimate ride fares.
+ */
+export const estimateFare = onCall(async (request) => {
+  // 1. Authentication Check
+  if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be logged in to request a fare estimate.");
   }
 
-  const validation = FareRequestSchema.safeParse(data);
+  // 2. Input Validation
+  const validation = FareRequestSchema.safeParse(request.data);
   if (!validation.success) {
-    throw new HttpsError("invalid-argument", "The data provided is not in the correct format.");
+    console.error("Invalid input for estimateFare:", validation.error.issues);
+    throw new HttpsError("invalid-argument", "The data provided is not in the correct format.", validation.error.format());
   }
-
   const { pickup, drop } = validation.data;
-  const origin = `${pickup.lat},${pickup.lng}`;
-  const destination = `${drop.lat},${drop.lng}`;
 
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${apiKey}`;
+  // 3. Call Google Directions API
+  const directionsRequest: DirectionsRequest = {
+    params: {
+      origin: { lat: pickup.lat, lng: pickup.lng },
+      destination: { lat: drop.lat, lng: drop.lng },
+      mode: "driving",
+      key: GOOGLE_MAPS_API_KEY!,
+    },
+  };
+
+  let distanceMeters: number;
+  let durationSeconds: number;
 
   try {
-    const response = await fetch(url);
-    const jsonResponse = await response.json();
-
-    if (jsonResponse.status !== "OK" || !jsonResponse.routes || jsonResponse.routes.length === 0) {
-      console.error("Directions API Error:", jsonResponse.error_message || jsonResponse.status);
-      throw new HttpsError("not-found", "Could not calculate a route for the given locations.", { code: "DIRECTIONS_FAILED" });
+    const response = await mapsClient.directions(directionsRequest);
+    const route = response.data.routes[0];
+    if (!route || !route.legs[0]) {
+      throw new Error("No valid route found.");
     }
-
-    const route = jsonResponse.routes[0].legs[0];
-    const distanceMeters = route.distance.value;
-    const durationSeconds = route.duration.value;
-
-    const distanceKm = distanceMeters / 1000;
-    const durationMin = durationSeconds / 60;
-
-    // Fare Formula: baseFare (30) + (12 × km) + (2 × minutes)
-    const fare = Math.round(30 + (12 * distanceKm) + (2 * durationMin));
-
-    return {
-      success: true,
-      fare,
-      distanceKm: parseFloat(distanceKm.toFixed(2)),
-      durationMin: Math.round(durationMin),
-    };
+    const leg = route.legs[0];
+    distanceMeters = leg.distance?.value || 0;
+    durationSeconds = leg.duration?.value || 0;
   } catch (error) {
-    console.error("Error calling Google Directions API:", error);
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-    throw new HttpsError("internal", "An unexpected error occurred while estimating the fare.");
+    console.error("Google Directions API call failed:", error);
+    throw new HttpsError("internal", "Could not calculate the route.", { code: "DIRECTIONS_FAILED" });
   }
+
+  // 4. Calculate Fares
+  const distanceKm = distanceMeters / 1000;
+  const durationMin = durationSeconds / 60;
+
+  const calculate = (mode: keyof typeof FARE_CONFIG) => {
+    const config = FARE_CONFIG[mode];
+    const fare = config.base + (distanceKm * config.perKm) + (durationMin * config.perMin);
+    return Math.round(fare); // Return a clean integer
+  };
+
+  const estimates = {
+    cab: calculate("cab"),
+    auto: calculate("auto"),
+    bike: calculate("bike"),
+  };
+
+  // 5. Return Successful Response
+  return {
+    ok: true,
+    distanceKm: parseFloat(distanceKm.toFixed(2)),
+    durationMin: Math.round(durationMin),
+    estimates,
+  };
 });
