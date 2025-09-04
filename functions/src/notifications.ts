@@ -35,10 +35,22 @@ export const notifyDriverOnRideRequest = async (
 
   try {
     const declinedBy = rideData.declinedBy || [];
-    const driversSnapshot = await db.collection('driver_locations').get();
+    
+    // Base query for available drivers
+    let driversQuery: admin.firestore.Query = db.collection('driver_locations');
+    
+    // --- ✅ RESILIENCY: Exclude drivers who have already declined ---
+    if (declinedBy.length > 0) {
+        // Firestore's 'not-in' query has a limit of 10 items. For a production system,
+        // a more scalable approach might involve filtering on the client or a more complex query structure.
+        // For this MVP, we assume the number of declines will be small.
+        driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy);
+    }
+    
+    const driversSnapshot = await driversQuery.get();
 
     if (driversSnapshot.empty) {
-      await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available', errorMessage: 'No drivers are currently online.' });
+      await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available', errorMessage: 'No drivers are currently online or available.' });
       return null;
     }
 
@@ -48,11 +60,6 @@ export const notifyDriverOnRideRequest = async (
     for (const driverDoc of driversSnapshot.docs) {
       const driverData = driverDoc.data();
       const driverId = driverData.driver_id;
-
-      // --- RESILIENCY: Skip drivers who have already declined this ride ---
-      if (declinedBy.includes(driverId)) {
-        continue;
-      }
 
       const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
       
