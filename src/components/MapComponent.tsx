@@ -1,13 +1,13 @@
-
 "use client";
 
 import React, { useEffect, useState, memo } from 'react';
-import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
 import type { Ride } from '@/lib/types';
 import { CarIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface MapComponentProps {
-    center: { lat: number; lng: number } | null;
+    center: { lat: number; lng: number };
     drivers?: { driver_id: string; latitude: number; longitude: number; }[];
     activeRide?: Ride | null;
     role: 'rider' | 'driver';
@@ -17,133 +17,85 @@ const mapStyles: google.maps.MapTypeStyle[] = [
     { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
     { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
     { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-    {
-        featureType: 'administrative.locality',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#d59563' }],
-    },
-    {
-        featureType: 'poi',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#d59563' }],
-    },
-    {
-        featureType: 'poi.park',
-        elementType: 'geometry',
-        stylers: [{ color: '#263c3f' }],
-    },
-    {
-        featureType: 'poi.park',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#6b9a76' }],
-    },
-    {
-        featureType: 'road',
-        elementType: 'geometry',
-        stylers: [{ color: '#38414e' }],
-    },
-    {
-        featureType: 'road',
-        elementType: 'geometry.stroke',
-        stylers: [{ color: '#212a37' }],
-    },
-    {
-        featureType: 'road',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#9ca5b3' }],
-    },
-    {
-        featureType: 'road.highway',
-        elementType: 'geometry',
-        stylers: [{ color: '#746855' }],
-    },
-    {
-        featureType: 'road.highway',
-        elementType: 'geometry.stroke',
-        stylers: [{ color: '#1f2835' }],
-    },
-    {
-        featureType: 'road.highway',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#f3d19c' }],
-    },
-    {
-        featureType: 'transit',
-        elementType: 'geometry',
-        stylers: [{ color: '#2f3948' }],
-    },
-    {
-        featureType: 'transit.station',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#d59563' }],
-    },
-    {
-        featureType: 'water',
-        elementType: 'geometry',
-        stylers: [{ color: '#17263c' }],
-    },
-    {
-        featureType: 'water',
-        elementType: 'labels.text.fill',
-        stylers: [{ color: '#515c6d' }],
-    },
-    {
-        featureType: 'water',
-        elementType: 'labels.text.stroke',
-        stylers: [{ color: '#17263c' }],
-    },
+    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
+    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
+    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+    { featureType: 'water',elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+    { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
 ];
 
-const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentProps) => {
-    const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
+    const map = useMap();
+    const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
+    const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
 
     useEffect(() => {
-        if (!activeRide || !['accepted', 'in-progress'].includes(activeRide.status)) {
-            setDirections(null);
+        if (!map) return;
+        setDirectionsService(new window.google.maps.DirectionsService());
+        setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
+            suppressMarkers: true,
+            polylineOptions: { strokeColor: '#f56565', strokeWeight: 5, strokeOpacity: 0.8 },
+        }));
+    }, [map]);
+
+    useEffect(() => {
+        if (directionsRenderer) {
+            directionsRenderer.setMap(map);
+        }
+    }, [map, directionsRenderer]);
+
+    useEffect(() => {
+        if (!directionsService || !directionsRenderer || !activeRide || !['accepted', 'in-progress'].includes(activeRide.status)) {
+            directionsRenderer?.setDirections(null); // Clear route when ride is not active
             return;
         }
 
-        const directionsService = new window.google.maps.DirectionsService();
-        const directionsRenderer = new window.google.maps.DirectionsRenderer({
-            suppressMarkers: true, // We use our own AdvancedMarkers
-            polylineOptions: {
-                strokeColor: '#f56565', // Red color for the route
-                strokeOpacity: 0.8,
-                strokeWeight: 5,
-            },
+        let origin, destination;
+
+        if (activeRide.status === 'accepted' && activeRide.driverLive) {
+            origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
+            destination = new google.maps.LatLng(activeRide.pickupLocation.latitude, activeRide.pickupLocation.longitude);
+        } else if (activeRide.status === 'in-progress' && activeRide.driverLive) {
+            origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
+            destination = activeRide.destinationAddress;
+        } else {
+            return;
+        }
+
+        directionsService.route({
+            origin: origin,
+            destination: destination,
+            travelMode: google.maps.TravelMode.DRIVING,
+        }, (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK) {
+                directionsRenderer.setDirections(result);
+            } else {
+                console.error(`Error fetching directions: ${status}`);
+            }
         });
 
-        const origin = activeRide.pickupLocation;
-        const destination = activeRide.destinationAddress; // Assuming this is a geocodable string
+    }, [activeRide, directionsService, directionsRenderer]);
 
-        directionsService.route(
-            {
-                origin: new google.maps.LatLng(origin.latitude, origin.longitude),
-                destination: destination,
-                travelMode: google.maps.TravelMode.DRIVING,
-            },
-            (result, status) => {
-                if (status === google.maps.DirectionsStatus.OK) {
-                    setDirections(result);
-                } else {
-                    console.error(`error fetching directions ${result}`);
-                }
-            }
-        );
+    return null;
+};
 
-        // This part is a bit tricky with react-google-maps v1.
-        // In a real app we'd likely need to manage the map instance itself to add the renderer.
-        // For now, this state is ready for a component that can render it.
-
-    }, [activeRide]);
-
-    if (!center) return null;
-
+const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentProps) => {
     const defaultProps = {
         center: center,
         zoom: 15,
         mapId: '15d7ba67048f63a6', // Custom Map ID from GCP
         disableDefaultUI: true,
+        styles: mapStyles,
     };
 
     return (
@@ -157,14 +109,19 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
             </AdvancedMarker>
 
             {role === 'rider' && !activeRide && drivers.map((driver) => (
-                <AdvancedMarker
+                 <AdvancedMarker
                     key={driver.driver_id}
                     position={{ lat: driver.latitude, lng: driver.longitude }}
-                    title={`Driver ${driver.driver_id}`}
+                    title={`Driver ${driver.driver_id.substring(0, 4)}`}
                 >
-                    <div className="bg-background p-1 rounded-full shadow-lg">
+                    <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: Math.random() * 0.5 }}
+                        className="bg-background p-1 rounded-full shadow-lg"
+                    >
                         <CarIcon className="h-6 w-6 text-foreground" />
-                    </div>
+                    </motion.div>
                 </AdvancedMarker>
             ))}
 
@@ -179,6 +136,7 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
                 </AdvancedMarker>
             )}
 
+            <DirectionsRenderer activeRide={activeRide} />
         </Map>
     );
 };

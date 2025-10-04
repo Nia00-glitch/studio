@@ -1,4 +1,3 @@
-
 import * as functions from 'firebase-functions';
 import { onCallGenkit } from '@genkit-ai/firebase';
 import { emergencyFlow, niaActionFlow } from './simple-flow';

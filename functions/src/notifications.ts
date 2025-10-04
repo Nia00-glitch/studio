@@ -1,5 +1,5 @@
-
 import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
 import { db, messaging } from './common'; // Use shared admin instance
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -41,9 +41,8 @@ export const notifyDriverOnRideRequest = async (
     
     // --- ✅ RESILIENCY: Exclude drivers who have already declined ---
     if (declinedBy.length > 0) {
-        // Firestore's 'not-in' query has a limit of 10 items. For a production system,
-        // a more scalable approach might involve filtering on the client or a more complex query structure.
-        // For this MVP, we assume the number of declines will be small.
+        // Firestore's 'not-in' query has a limit of 30 items. For a production system,
+        // this is a reasonable limit for an MVP.
         driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy);
     }
     

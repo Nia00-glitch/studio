@@ -1,4 +1,3 @@
-
 "use client";
 
 import { EmergencyProvider } from '@/contexts/EmergencyContext';

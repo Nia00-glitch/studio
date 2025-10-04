@@ -1,4 +1,3 @@
-
 "use client";
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -28,13 +27,13 @@ interface FareQuoteResponse {
  * Calls the `estimateFare` Firebase Cloud Function to get fare quotes.
  * @param pickup - The pickup coordinates.
  * @param drop - The drop-off coordinates.
- * @returns A promise that resolves to the fare estimates, or null if a structured error occurred.
- * @throws An error for fundamental connectivity issues (e.g., Firebase call fails).
+ * @returns A promise that resolves to the fare estimates.
+ * @throws A structured error if the backend returns a failure code.
  */
 export async function getFareQuote(
     pickup: { lat: number; lng: number }, 
     drop: { lat: number; lng: number }
-): Promise<FareEstimates | null> {
+): Promise<FareEstimates> {
     const functions = getFunctions(app);
     const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
 
@@ -51,7 +50,7 @@ export async function getFareQuote(
         } else {
             // This is a structured error from our backend (e.g., no route found)
             console.error(`Fare estimation failed with code: ${data.code} - ${data.message}`);
-            // We can throw a more specific error for the UI to catch and handle
+            // We throw a specific error for the UI to catch and handle
             const error = new Error(data.message || 'Failed to get fare estimates.');
             (error as any).code = data.code;
             throw error;
