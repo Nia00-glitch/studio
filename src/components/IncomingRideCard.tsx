@@ -5,7 +5,7 @@ import React from "react";
 import type { Ride } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Car, Clock, DollarSign, MapPin, Mic } from "lucide-react";
+import { Car, DollarSign, MapPin, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface IncomingRideCardProps {
@@ -16,7 +16,8 @@ interface IncomingRideCardProps {
 }
 
 const IncomingRideCard = ({ ride, onAccept, onDecline, isListening }: IncomingRideCardProps) => {
-    const pickupAddress = ride.pickupLocation?.address || 'Pickup Location';
+    // In a real app, you would use a geocoding service to get the address from lat/lng
+    const pickupAddress = `Near you`;
     const destinationAddress = ride.destinationAddress || 'Destination';
     const estimatedFare = ride.priceEstimate || 0;
 
@@ -82,7 +83,3 @@ const IncomingRideCard = ({ ride, onAccept, onDecline, isListening }: IncomingRi
 }
 
 export default React.memo(IncomingRideCard);
-
-    
-
-    

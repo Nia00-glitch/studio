@@ -24,7 +24,3 @@ export default function OfflineIndicator() {
     </AnimatePresence>
   );
 }
-
-    
-
-    

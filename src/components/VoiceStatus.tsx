@@ -2,7 +2,7 @@
 "use client";
 
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
-import { Mic, Bot, Loader2 } from "lucide-react";
+import { Bot, Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function VoiceStatus() {
@@ -45,7 +45,3 @@ export default function VoiceStatus() {
     </AnimatePresence>
   );
 }
-
-    
-
-    

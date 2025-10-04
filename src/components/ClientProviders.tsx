@@ -1,3 +1,4 @@
+
 "use client";
 
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
@@ -13,8 +14,12 @@ const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
 });
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
+  // Directly use the provided API key here.
+  // For production, this should come from an environment variable.
+  const googleMapsApiKey = "AQ.Ab8RN6I5iACyg8COQc0S03MCgyqM0DcuZpnQdlb8p4UbA47JpQ";
+
   return (
-    <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
+    <APIProvider apiKey={googleMapsApiKey}>
         <AuthProvider>
           <EmergencyProvider>
             <VoiceListener />

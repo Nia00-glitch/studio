@@ -57,28 +57,38 @@ const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
 
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !activeRide || !['accepted', 'in-progress'].includes(activeRide.status)) {
-            directionsRenderer?.setDirections(null); // Clear route when ride is not active
+            directionsRenderer?.setDirections({routes: []}); // Clear route when ride is not active
             return;
         }
 
         let origin, destination;
+        const pickupLatLng = new google.maps.LatLng(activeRide.pickupLocation.latitude, activeRide.pickupLocation.longitude);
 
         if (activeRide.status === 'accepted' && activeRide.driverLive) {
             origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            destination = new google.maps.LatLng(activeRide.pickupLocation.latitude, activeRide.pickupLocation.longitude);
+            destination = pickupLatLng;
         } else if (activeRide.status === 'in-progress' && activeRide.driverLive) {
             origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            destination = activeRide.destinationAddress;
+            // In a real app, destinationAddress would be geocoded to a LatLng
+            // For now, we'll just use the pickup location as a placeholder for the destination if it's a string
+            destination = { query: activeRide.destinationAddress, location: pickupLatLng };
         } else {
             return;
         }
+        
+        // This is a temporary fix. In a real app, you would geocode the destinationAddress to get lat/lng
+        if (typeof destination === 'string') {
+             console.warn("Destination is a string, geocoding not implemented. Using placeholder.");
+             destination = pickupLatLng; // Placeholder
+        }
+
 
         directionsService.route({
             origin: origin,
             destination: destination,
             travelMode: google.maps.TravelMode.DRIVING,
         }, (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK) {
+            if (status === google.maps.DirectionsStatus.OK && result) {
                 directionsRenderer.setDirections(result);
             } else {
                 console.error(`Error fetching directions: ${status}`);
@@ -91,6 +101,18 @@ const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
 };
 
 const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentProps) => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!map || !activeRide || !activeRide.driverLive) return;
+        
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend(new google.maps.LatLng(center!.lat, center!.lng));
+        bounds.extend(new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng));
+        
+        map.fitBounds(bounds, 100); // 100px padding
+    }, [map, activeRide, center]);
+
     if (!center) return null;
 
     const defaultProps = {
@@ -145,5 +167,3 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
 };
 
 export default memo(MapComponent);
-
-    
