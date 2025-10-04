@@ -14,9 +14,21 @@ const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
 });
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
-  // Directly use the provided API key here.
-  // For production, this should come from an environment variable.
-  const googleMapsApiKey = "AQ.Ab8RN6I5iACyg8COQc0S03MCgyqM0DcuZpnQdlb8p4UbA47JpQ";
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+  if (!googleMapsApiKey) {
+    console.error("FATAL: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set.");
+    // You could render an error message here
+    return (
+        <div className="flex h-screen items-center justify-center">
+            <div className="text-destructive p-4 border border-destructive/50 rounded-lg">
+                <h2 className="font-bold">Configuration Error</h2>
+                <p>Google Maps API Key is missing. The app cannot load.</p>
+                <p className="text-sm text-muted-foreground mt-2">Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your .env.local file.</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <APIProvider apiKey={googleMapsApiKey}>
