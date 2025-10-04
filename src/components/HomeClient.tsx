@@ -4,18 +4,16 @@
 import 'regenerator-runtime/runtime';
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, Mic, WifiOff, AlertTriangle, LogOut, Loader2 } from "lucide-react";
+import { Settings, LogOut, Loader2 } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
 import { Button } from "@/components/ui/button";
 import { NIAIcon } from "@/components/icons";
-import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, limit, runTransaction, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
@@ -24,6 +22,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { getFareQuote } from "@/lib/fare";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import OfflineIndicator from '@/components/OfflineIndicator';
+import VoiceStatus from '@/components/VoiceStatus';
 
 const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
     ssr: false,
@@ -441,14 +441,16 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       <header className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-gradient-to-b from-black/20 to-transparent">
         <h1 className="text-xl font-bold text-white shadow-md flex items-center gap-2 font-headline"><NIAIcon className="w-6 h-6" /> NIA Rides</h1>
         <div className="flex items-center gap-2">
-            {!isOnline && <div className="flex items-center gap-2 text-white bg-destructive/80 px-3 py-1 rounded-full text-sm"><WifiOff className="w-4 h-4" /> Offline</div>}
+            <OfflineIndicator />
             <Link href="/settings" passHref><Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Settings"><Settings className="h-6 w-6" /></Button></Link>
             <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Logout" onClick={logout}><LogOut className="h-6 w-6" /></Button>
         </div>
       </header>
+      
+      <VoiceStatus />
 
       <main className="flex-grow relative">
-        {locationError && <div className="absolute inset-0 flex flex-col items-center justify-center bg-background z-20 p-4 text-center"><Alert variant="destructive" className="max-w-md"><AlertTriangle className="h-4 w-4" /><AlertTitle>Location Error</AlertTitle><AlertDescription>{locationError}</AlertDescription></Alert></div>}
+        {locationError && <div className="absolute inset-0 z-20 p-4 text-center flex items-center justify-center bg-background/80 backdrop-blur-sm"><p>{locationError}</p></div>}
         {!location && !locationError && <div className="absolute inset-0 flex items-center justify-center bg-background z-20"><Loader2 className="h-8 w-8 animate-spin" /><p className="ml-4">Getting your location...</p></div>}
         {location && <MapComponent {...getMapPropsForRole()} />}
       </main>
@@ -461,3 +463,5 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
+
+    

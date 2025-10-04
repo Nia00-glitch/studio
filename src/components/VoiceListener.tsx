@@ -2,7 +2,7 @@
 "use client";
 
 import 'regenerator-runtime/runtime';
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +12,8 @@ const VoiceListener = () => {
     isEmergencyActive,
     setIsListening,
     processVoiceCommand, // The new handler from context
+    isOnline,
+    speak,
   } = useEmergencyContext();
   const { toast } = useToast();
 
@@ -28,11 +30,15 @@ const VoiceListener = () => {
     if (finalTranscript && !isEmergencyActive) {
         // Only process if a wake word is detected to avoid sending every spoken word.
         if (finalTranscript.toLowerCase().startsWith('nia')) {
-             processVoiceCommand(finalTranscript);
+            if (!isOnline) {
+                speak("You seem to be offline. Please check your connection and try again.");
+            } else {
+                processVoiceCommand(finalTranscript);
+            }
         }
         resetTranscript(); // Reset after processing to be ready for the next command.
     }
-  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive]);
+  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive, isOnline, speak]);
 
 
   useEffect(() => {
@@ -50,24 +56,27 @@ const VoiceListener = () => {
       return;
     }
 
+    // This check is now more robust. We only show the toast once.
     if (!isMicrophoneAvailable) {
         toast({
             variant: "destructive",
             title: "Microphone Access Denied",
-            description: "Please enable microphone permissions to use voice commands.",
+            description: "Please enable microphone permissions in your browser settings to use voice commands.",
+            duration: Infinity, // Make it persistent until dismissed
         });
+        return; // Don't attempt to start listening if mic is not available.
     }
 
     const startListening = () => {
-        // Here you could add logic to switch language, e.g., from a settings context
         const language = 'en-IN'; // Set to Indian English for better Hinglish recognition
         SpeechRecognition.startListening({ continuous: true, language }).catch(err => {
             console.error('Could not start listening:', err);
             if (err.name === 'NotAllowedError') {
                  toast({
                     variant: "destructive",
-                    title: "Microphone Access Denied",
-                    description: "Please enable microphone permissions to use voice commands.",
+                    title: "Microphone Access Denied by User",
+                    description: "Please enable microphone permissions in your browser settings.",
+                    duration: Infinity,
                 });
             }
         });
@@ -84,3 +93,5 @@ const VoiceListener = () => {
 };
 
 export default VoiceListener;
+
+    
