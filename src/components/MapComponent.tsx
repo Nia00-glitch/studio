@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState, memo } from 'react';
@@ -7,7 +8,7 @@ import { CarIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface MapComponentProps {
-    center: { lat: number; lng: number };
+    center: { lat: number; lng: number } | null;
     drivers?: { driver_id: string; latitude: number; longitude: number; }[];
     activeRide?: Ride | null;
     role: 'rider' | 'driver';
@@ -90,6 +91,8 @@ const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
 };
 
 const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentProps) => {
+    if (!center) return null;
+
     const defaultProps = {
         center: center,
         zoom: 15,
@@ -142,3 +145,5 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
 };
 
 export default memo(MapComponent);
+
+    

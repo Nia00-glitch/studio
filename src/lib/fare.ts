@@ -1,3 +1,4 @@
+
 "use client";
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -63,3 +64,5 @@ export async function getFareQuote(
         throw new Error("Could not connect to the fare estimation service.");
     }
 }
+
+    
