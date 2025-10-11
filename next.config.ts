@@ -1,8 +1,14 @@
 
 import type {NextConfig} from 'next';
+
 const withPWA = require('next-pwa')({
-  dest: 'public'
-})
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  // Inject firebase config into service worker
+  pwaExcludes: [/^(?!.*firebase-messaging-sw\.js$).*/],
+  firebaseMessagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+});
 
 const nextConfig: NextConfig = {
   /* config options here */

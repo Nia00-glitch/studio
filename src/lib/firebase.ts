@@ -15,6 +15,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// Basic validation to ensure environment variables are loaded
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+    console.error("Firebase configuration is missing or incomplete. Check your .env.local file.");
+}
+
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
@@ -24,14 +29,18 @@ const functions = getFunctions(app);
 
 // Initialize Firebase Cloud Messaging and handle foreground messages
 let messaging;
-if (typeof window !== 'undefined') {
-  messaging = getMessaging(app);
-  onMessage(messaging, (payload) => {
-    console.log('Foreground message received. ', payload);
-    // You can display a toast or other notification here
-    // For example, using a toast library:
-    // toast({ title: payload.notification?.title, description: payload.notification?.body });
-  });
+if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
+  try {
+    messaging = getMessaging(app);
+    onMessage(messaging, (payload) => {
+      console.log('Foreground message received. ', payload);
+      // You can display a toast or other notification here
+      // For example, using a toast library:
+      // toast({ title: payload.notification?.title, description: payload.notification?.body });
+    });
+  } catch (error) {
+    console.error("Could not initialize Firebase Messaging:", error);
+  }
 }
 
 export { app, auth, storage, db, functions, messaging };
