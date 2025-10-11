@@ -3,6 +3,8 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getMessaging, onMessage } from 'firebase/messaging';
+import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,9 +20,18 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const storage = getStorage(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
 
-// NOTE: Offline persistence is now enabled directly within AuthContext
-// to guarantee it runs before any Firestore operations. This prevents
-// race conditions on initial app load.
+// Initialize Firebase Cloud Messaging and handle foreground messages
+let messaging;
+if (typeof window !== 'undefined') {
+  messaging = getMessaging(app);
+  onMessage(messaging, (payload) => {
+    console.log('Foreground message received. ', payload);
+    // You can display a toast or other notification here
+    // For example, using a toast library:
+    // toast({ title: payload.notification?.title, description: payload.notification?.body });
+  });
+}
 
-export { app, auth, storage, db };
+export { app, auth, storage, db, functions, messaging };
