@@ -18,10 +18,11 @@ export default function Home() {
     }
 
     if (!user) {
-      // No user found, redirect to login page.
+      // This case should be rare now with auto anonymous sign-in,
+      // but as a fallback, we can show the login screen.
       router.replace('/login');
     } else {
-      // User is logged in. Now check for profile.
+      // User is logged in (anonymously or otherwise). Now check for profile.
       if (userProfile) {
         // Profile exists, redirect based on role.
         if (userProfile.role === 'driver') {
@@ -30,8 +31,7 @@ export default function Home() {
           router.replace('/rider-home');
         }
       } else {
-        // No profile exists, redirect to create one.
-        // This is the key fix for new anonymous users.
+        // No profile exists for this authenticated user, redirect to create one.
         router.replace('/complete-profile');
       }
     }

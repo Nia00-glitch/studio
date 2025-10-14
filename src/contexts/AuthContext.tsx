@@ -2,8 +2,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, signOut, User, signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { auth, db, app } from '@/lib/firebase';
 import type { UserProfile } from '@/lib/types';
@@ -17,7 +17,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => void;
-  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => Promise<void>;
+  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt' | 'phoneNumber'>) => Promise<void>;
   updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
 
@@ -85,11 +85,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!isFirebaseReady) return;
     
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
+        // User is signed in (either phone or anonymous)
         setUser(user);
-        await setupFCM(user, toast);
-        
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
           setUserProfile(docSnap.exists() ? docSnap.data() as UserProfile : null);
@@ -101,39 +100,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
         return () => unsubscribeProfile();
       } else {
-        // No user, not loading anymore. page.tsx will redirect to /login
-        setUser(null);
-        setUserProfile(null);
-        setLoading(false);
+        // No user. Let's sign them in anonymously.
+        signInAnonymously(auth).catch((error) => {
+            console.error("Anonymous sign-in failed:", error);
+            setLoading(false);
+        });
       }
     });
 
     return () => unsubscribeAuth();
-  }, [isFirebaseReady, toast]);
+  }, [isFirebaseReady]);
 
   const logout = async () => {
     setLoading(true);
     await signOut(auth);
     setUser(null);
     setUserProfile(null);
-    router.replace('/login'); 
     setLoading(false);
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => {
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt' | 'phoneNumber'>) => {
     if (!user) throw new Error("No user logged in.");
     
     const userDocRef = doc(db, 'users', user.uid);
-    const newUserProfile: Omit<UserProfile, 'fcmToken' | 'phoneNumber'> = {
+    const newUserProfile: Omit<UserProfile, 'fcmToken'> = {
       ...profileData,
       uid: user.uid,
+      phoneNumber: user.phoneNumber || 'anonymous', // Handle anonymous user
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    
-    if (user.phoneNumber) {
-      (newUserProfile as UserProfile).phoneNumber = user.phoneNumber;
-    }
 
     await setDoc(userDocRef, newUserProfile);
     setUserProfile(newUserProfile as UserProfile);
