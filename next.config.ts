@@ -7,9 +7,6 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   // Disable PWA in development
   disable: process.env.NODE_ENV === 'development',
-  // Inject firebase config into service worker
-  pwaExcludes: [/^(?!.*firebase-messaging-sw\.js$).*/],
-  firebaseMessagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
 });
 
 const nextConfig: NextConfig = {

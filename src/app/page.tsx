@@ -18,8 +18,7 @@ export default function Home() {
     }
 
     if (!user) {
-      // This case should be rare now with auto anonymous sign-in,
-      // but as a fallback, we can show the login screen.
+      // If there is no user for any reason, send to login to re-initiate.
       router.replace('/login');
     } else {
       // User is logged in (anonymously or otherwise). Now check for profile.
