@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User, signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { auth, db, app } from '@/lib/firebase';
@@ -17,7 +17,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => void;
-  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => Promise<void>;
+  createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => Promise<void>;
   updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
 
@@ -88,10 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        // Only set up FCM if the user is not anonymous
-        if (!user.isAnonymous) {
-          await setupFCM(user, toast);
-        }
+        await setupFCM(user, toast);
         
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -99,15 +96,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setLoading(false);
         }, (error) => {
           console.error("Error fetching user profile:", error);
+          setUserProfile(null);
           setLoading(false);
         });
         return () => unsubscribeProfile();
       } else {
-        // If no user, sign in anonymously for development
-        signInAnonymously(auth).catch((error) => {
-            console.error("Anonymous sign-in failed:", error);
-            setLoading(false);
-        });
+        // No user, not loading anymore. page.tsx will redirect to /login
+        setUser(null);
+        setUserProfile(null);
+        setLoading(false);
       }
     });
 
@@ -119,23 +116,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await signOut(auth);
     setUser(null);
     setUserProfile(null);
-    // After logging out, we will get a new anonymous user automatically
-    router.replace('/'); 
+    router.replace('/login'); 
     setLoading(false);
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'phoneNumber' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => {
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'fcmToken' | 'updatedAt'>) => {
     if (!user) throw new Error("No user logged in.");
     
     const userDocRef = doc(db, 'users', user.uid);
-    const newUserProfile: Omit<UserProfile, 'fcmToken'> = {
+    const newUserProfile: Omit<UserProfile, 'fcmToken' | 'phoneNumber'> = {
       ...profileData,
       uid: user.uid,
-      // Use a placeholder for anonymous users
-      phoneNumber: user.isAnonymous ? 'N/A' : (user.phoneNumber || ''),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+    
+    if (user.phoneNumber) {
+      (newUserProfile as UserProfile).phoneNumber = user.phoneNumber;
+    }
+
     await setDoc(userDocRef, newUserProfile);
     setUserProfile(newUserProfile as UserProfile);
   };
