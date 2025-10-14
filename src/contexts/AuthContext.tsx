@@ -1,20 +1,51 @@
 
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp, onSnapshot, updateDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { User } from 'firebase/auth';
 import type { UserProfile } from '@/lib/types';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { NIAIcon } from '@/components/icons';
+
+// --- MOCK USER DATA ---
+// This is a temporary solution to bypass Firebase project config issues.
+const MOCK_USER: User = {
+  uid: 'mock-user-uid-12345',
+  isAnonymous: true,
+  // Add other User properties as needed, but keep them minimal
+  email: null,
+  emailVerified: false,
+  phoneNumber: null,
+  photoURL: null,
+  displayName: 'Mock User',
+  providerId: 'firebase',
+  tenantId: null,
+  metadata: {},
+  providerData: [],
+  refreshToken: '',
+  delete: () => Promise.resolve(),
+  getIdToken: () => Promise.resolve('mock-token'),
+  getIdTokenResult: () => Promise.resolve({ token: 'mock-token', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+  reload: () => Promise.resolve(),
+  toJSON: () => ({}),
+};
+
+const MOCK_USER_PROFILE: UserProfile = {
+  uid: 'mock-user-uid-12345',
+  name: 'John Doe (Rider)',
+  role: 'rider',
+  phoneNumber: '555-1234',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 
 interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => void;
+  // These functions will be no-ops in mock mode
   createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'phoneNumber' | 'fcmToken'>) => Promise<void>;
   updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
@@ -22,72 +53,46 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  // We'll use state to simulate the async nature of auth
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
-      if (authUser) {
-        setUser(authUser);
-        // User is authenticated, now check for their profile in Firestore.
-        const userDocRef = doc(db, 'users', authUser.uid);
-        const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            setUserProfile(docSnap.data() as UserProfile);
-          } else {
-            // This case is handled by the main page redirecting to /complete-profile
-            setUserProfile(null);
-          }
-          setLoading(false);
-        });
-        return () => unsubscribeProfile();
-      } else {
-        // No user is signed in, attempt to sign in anonymously.
-        try {
-          await signInAnonymously(auth);
-          // The onAuthStateChanged listener will be called again with the new anonymous user.
-        } catch (error) {
-          console.error("Anonymous sign-in failed:", error);
-          setLoading(false);
-        }
-      }
-    });
+    // Simulate fetching the user profile
+    const timer = setTimeout(() => {
+      setUser(MOCK_USER);
+      setUserProfile(MOCK_USER_PROFILE);
+      setLoading(false);
+    }, 1500); // Simulate a network delay
 
-    return () => unsubscribeAuth();
+    return () => clearTimeout(timer);
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
+
+  const logout = () => {
+    console.log("Mock logout requested. In a real app, this would clear state and redirect.");
+    // In a mock environment, you might want to simulate being logged out
+    setLoading(true);
     setUser(null);
     setUserProfile(null);
-    router.push('/login');
+     setTimeout(() => {
+      setUser(MOCK_USER);
+      setUserProfile(MOCK_USER_PROFILE);
+      setLoading(false);
+    }, 1500);
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'phoneNumber' | 'fcmToken'>) => {
-    if (!user) throw new Error("No user logged in.");
-    
-    const userDocRef = doc(db, 'users', user.uid);
-    const newUserProfile: Omit<UserProfile, 'fcmToken'> = {
-      ...profileData,
-      uid: user.uid,
-      phoneNumber: user.phoneNumber || 'anonymous', // Handle anonymous user
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    await setDoc(userDocRef, newUserProfile);
-    // The onSnapshot listener will automatically update the userProfile state.
+  const createUserProfile = async (profileData: any) => {
+    console.log("`createUserProfile` called with:", profileData);
+    console.log("This is a no-op in mock mode.");
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
-    if (!user || !userProfile) throw new Error("User or profile not available for role update.");
-    if (userProfile.role === newRole) return;
-
-    const userDocRef = doc(db, 'users', user.uid);
-    await updateDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() });
-    // The onSnapshot listener will update the state.
+     console.log(`'updateRole' called with: ${newRole}`);
+     if(userProfile){
+        setUserProfile({...userProfile, role: newRole});
+     }
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
@@ -97,7 +102,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground">
         <NIAIcon className="w-24 h-24 text-primary animate-pulse" />
         <Loader2 className="mt-8 h-8 w-8 animate-spin" />
-        <p className="mt-4 text-muted-foreground">Initializing...</p>
+        <p className="mt-4 text-muted-foreground">Initializing Mock Session...</p>
       </div>
     );
   }
