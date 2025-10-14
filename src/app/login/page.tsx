@@ -1,183 +1,26 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
 import { NIAIcon } from '@/components/icons';
 import { Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useAuth } from '@/contexts/AuthContext';
 
-declare global {
-  interface Window {
-    recaptchaVerifier?: RecaptchaVerifier;
-    confirmationResult?: ConfirmationResult;
-  }
-}
-
-function LoginForm() {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (!window.recaptchaVerifier) {
-      const recaptchaContainer = document.getElementById('recaptcha-container');
-      if (recaptchaContainer) {
-        window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, {
-          'size': 'invisible',
-          'callback': (response: any) => {},
-        });
-        window.recaptchaVerifier.render();
-      }
-    }
-  }, []);
-
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const phoneRegex = /^\d{10,15}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-        toast({
-            variant: 'destructive',
-            title: 'Invalid Phone Number',
-            description: 'Please enter a valid number including country code (e.g., 911234567890).',
-        });
-        setLoading(false);
-        return;
-    }
-
-    if (!window.recaptchaVerifier) {
-        toast({ variant: 'destructive', title: 'Error', description: 'reCAPTCHA not initialized. Please refresh.' });
-        setLoading(false);
-        return;
-    }
-
-    try {
-      const confirmationResult = await signInWithPhoneNumber(auth, `+${phoneNumber}`, window.recaptchaVerifier);
-      window.confirmationResult = confirmationResult;
-      setStep('otp');
-      toast({ title: 'OTP Sent', description: 'Please check your phone.' });
-    } catch (error: any) {
-      console.error("Error sending OTP:", error);
-      toast({ variant: 'destructive', title: 'Error sending OTP', description: 'Please check the phone number and try again.' });
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.render().then(widgetId => {
-          // @ts-ignore
-          if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
-            // @ts-ignore
-            window.grecaptcha.reset(widgetId);
-          }
-        });
-      }
-    }
-    setLoading(false);
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    if (!window.confirmationResult) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Verification session expired. Please try again.' });
-        setStep('phone');
-        setLoading(false);
-        return;
-    }
-
-    try {
-      await window.confirmationResult.confirm(otp);
-      toast({ title: 'Success', description: 'Phone number verified!' });
-
-      // --- 🚀 PERFORMANCE OPTIMIZATION: Prefetch next possible routes ---
-      console.time("prefetch:dashboards");
-      router.prefetch('/rider-home');
-      router.prefetch('/driver-home');
-      router.prefetch('/complete-profile');
-      console.timeEnd("prefetch:dashboards");
-
-      router.push('/');
-    } catch (error: any) {
-      console.error("Error verifying OTP:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Invalid OTP. Please try again.' });
-    }
-    setLoading(false);
-  };
-
-  return (
-    <>
-      <div id="recaptcha-container" style={{ position: 'absolute', bottom: 0, right: 0 }}></div>
-      <CardContent>
-        {step === 'phone' ? (
-          <motion.form 
-            key="phone-form"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-            onSubmit={handleSendOtp} 
-            className="space-y-6"
-          >
-            <Input
-              type="tel"
-              placeholder="e.g., 911234567890"
-              className="h-14 text-lg"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              required
-            />
-            <Button type="submit" size="lg" className="w-full h-14 text-lg" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-              Send OTP
-            </Button>
-          </motion.form>
-        ) : (
-          <motion.form 
-            key="otp-form"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-            onSubmit={handleVerifyOtp} 
-            className="space-y-6"
-          >
-            <Input
-              type="text"
-              placeholder="Enter 6-digit OTP"
-              className="h-14 text-lg text-center tracking-[0.5em]"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-              maxLength={6}
-            />
-            <Button type="submit" size="lg" className="w-full h-14 text-lg" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-              Verify & Proceed
-            </Button>
-            <Button variant="link" onClick={() => setStep('phone')} className="w-full">
-              Use a different number
-            </Button>
-          </motion.form>
-        )}
-      </CardContent>
-    </>
-  );
-}
 
 export default function LoginPage() {
-  const [isClient, setIsClient] = useState(false);
+    const { user, loading } = useAuth();
+    const router = useRouter();
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+    useEffect(() => {
+        // The AuthContext now handles anonymous sign-in,
+        // so we just wait for a user object and then redirect.
+        if (!loading && user) {
+            router.replace('/');
+        }
+    }, [user, loading, router]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -201,12 +44,12 @@ export default function LoginPage() {
               Your personal safety companion.
             </CardDescription>
           </CardHeader>
-          {isClient ? <LoginForm /> : (
-              <div className="p-6 pt-0 space-y-4">
-                  <div className="h-14 w-full bg-muted rounded-lg animate-pulse"></div>
-                  <div className="h-14 w-full bg-muted rounded-lg animate-pulse"></div>
-              </div>
-          )}
+          <CardContent>
+             <div className="flex flex-col items-center justify-center p-6 space-y-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-muted-foreground">Signing in securely...</p>
+            </div>
+          </CardContent>
         </Card>
       </motion.div>
     </div>

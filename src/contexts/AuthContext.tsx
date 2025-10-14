@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, enableIndexedDbPersistence, updateDoc, onSnapshot } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { auth, db, app } from '@/lib/firebase';
@@ -88,7 +88,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        await setupFCM(user, toast);
+        // Only set up FCM if the user is not anonymous
+        if (!user.isAnonymous) {
+          await setupFCM(user, toast);
+        }
         
         const userDocRef = doc(db, 'users', user.uid);
         const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -100,9 +103,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
         return () => unsubscribeProfile();
       } else {
-        setUser(null);
-        setUserProfile(null);
-        setLoading(false);
+        // If no user, sign in anonymously for development
+        signInAnonymously(auth).catch((error) => {
+            console.error("Anonymous sign-in failed:", error);
+            setLoading(false);
+        });
       }
     });
 
@@ -114,7 +119,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await signOut(auth);
     setUser(null);
     setUserProfile(null);
-    router.replace('/login');
+    // After logging out, we will get a new anonymous user automatically
+    router.replace('/'); 
     setLoading(false);
   };
 
@@ -125,7 +131,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const newUserProfile: Omit<UserProfile, 'fcmToken'> = {
       ...profileData,
       uid: user.uid,
-      phoneNumber: user.phoneNumber || '',
+      // Use a placeholder for anonymous users
+      phoneNumber: user.isAnonymous ? 'N/A' : (user.phoneNumber || ''),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
