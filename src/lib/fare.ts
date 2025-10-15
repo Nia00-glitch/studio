@@ -2,8 +2,8 @@
 "use client";
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '@/lib/firebase';
 import type { FareEstimates } from './types';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 
 interface FareQuoteInput {
     pickup: { lat: number; lng: number };
@@ -35,6 +35,9 @@ export async function getFareQuote(
     pickup: { lat: number; lng: number }, 
     drop: { lat: number; lng: number }
 ): Promise<FareEstimates> {
+    // This is a temporary workaround because this file is not wrapped in the provider.
+    // In a larger app, we would get `functions` from a context.
+    const app = getApps().length > 0 ? getApp() : initializeApp({});
     const functions = getFunctions(app);
     const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
 
@@ -64,5 +67,3 @@ export async function getFareQuote(
         throw new Error("Could not connect to the fare estimation service.");
     }
 }
-
-    

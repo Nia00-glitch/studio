@@ -2,50 +2,18 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User } from 'firebase/auth';
+import { User, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import { NIAIcon } from '@/components/icons';
-
-// --- MOCK USER DATA ---
-// This is a temporary solution to bypass Firebase project config issues.
-const MOCK_USER: User = {
-  uid: 'mock-user-uid-12345',
-  isAnonymous: true,
-  // Add other User properties as needed, but keep them minimal
-  email: null,
-  emailVerified: false,
-  phoneNumber: null,
-  photoURL: null,
-  displayName: 'Mock User',
-  providerId: 'firebase',
-  tenantId: null,
-  metadata: {},
-  providerData: [],
-  refreshToken: '',
-  delete: () => Promise.resolve(),
-  getIdToken: () => Promise.resolve('mock-token'),
-  getIdTokenResult: () => Promise.resolve({ token: 'mock-token', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-  reload: () => Promise.resolve(),
-  toJSON: () => ({}),
-};
-
-const MOCK_USER_PROFILE: UserProfile = {
-  uid: 'mock-user-uid-12345',
-  name: 'John Doe (Rider)',
-  role: 'rider',
-  phoneNumber: '555-1234',
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
-
+import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
 
 interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => void;
-  // These functions will be no-ops in mock mode
   createUserProfile: (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'phoneNumber' | 'fcmToken'>) => Promise<void>;
   updateRole: (newRole: 'rider' | 'driver') => Promise<void>;
 }
@@ -53,46 +21,70 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  // We'll use state to simulate the async nature of auth
+  const { auth, db } = useFirebase(); // Get initialized services from context
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate fetching the user profile
-    const timer = setTimeout(() => {
-      setUser(MOCK_USER);
-      setUserProfile(MOCK_USER_PROFILE);
-      setLoading(false);
-    }, 1500); // Simulate a network delay
+    if (!auth || !db) return; // Wait for Firebase to be ready
 
-    return () => clearTimeout(timer);
-  }, []);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
+      if (authUser) {
+        setUser(authUser);
+        // User is signed in, now check for their profile in Firestore.
+        const userDocRef = doc(db, 'users', authUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          setUserProfile({ uid: authUser.uid, ...userDocSnap.data() } as UserProfile);
+        } else {
+          // Profile doesn't exist, this might be a new user.
+          setUserProfile(null);
+        }
+        setLoading(false);
+      } else {
+        // No user is signed in, attempt to sign in anonymously.
+        try {
+          await signInAnonymously(auth);
+          // The onAuthStateChanged listener will be called again with the new anonymous user.
+        } catch (error) {
+          console.error("Anonymous sign-in failed:", error);
+          setLoading(false);
+        }
+      }
+    });
 
+    return () => unsubscribeAuth();
+  }, [auth, db]);
 
-  const logout = () => {
-    console.log("Mock logout requested. In a real app, this would clear state and redirect.");
-    // In a mock environment, you might want to simulate being logged out
-    setLoading(true);
+  const logout = async () => {
+    if (!auth) return;
+    await auth.signOut();
     setUser(null);
     setUserProfile(null);
-     setTimeout(() => {
-      setUser(MOCK_USER);
-      setUserProfile(MOCK_USER_PROFILE);
-      setLoading(false);
-    }, 1500);
   };
 
-  const createUserProfile = async (profileData: any) => {
-    console.log("`createUserProfile` called with:", profileData);
-    console.log("This is a no-op in mock mode.");
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt'>) => {
+    if (!user) throw new Error("No user is signed in to create a profile for.");
+    if (!db) throw new Error("Database not initialized.");
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const newProfile: UserProfile = {
+      ...profileData,
+      uid: user.uid,
+      phoneNumber: user.phoneNumber || '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(userDocRef, newProfile);
+    setUserProfile(newProfile);
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
-     console.log(`'updateRole' called with: ${newRole}`);
-     if(userProfile){
-        setUserProfile({...userProfile, role: newRole});
-     }
+    if (!userProfile || !db) return;
+    const userDocRef = doc(db, 'users', userProfile.uid);
+    await setDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() }, { merge: true });
+    setUserProfile({ ...userProfile, role: newRole });
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
@@ -102,7 +94,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground">
         <NIAIcon className="w-24 h-24 text-primary animate-pulse" />
         <Loader2 className="mt-8 h-8 w-8 animate-spin" />
-        <p className="mt-4 text-muted-foreground">Initializing Mock Session...</p>
+        <p className="mt-4 text-muted-foreground">Initializing Session...</p>
       </div>
     );
   }

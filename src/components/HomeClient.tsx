@@ -15,7 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, limit, runTransaction, arrayUnion } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import dynamic from 'next/dynamic';
 import type { Ride, VoiceDialogState, DriverVoiceState } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +23,7 @@ import { getFareQuote } from "@/lib/fare";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import OfflineIndicator from '@/components/OfflineIndicator';
 import VoiceStatus from '@/components/VoiceStatus';
+import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
 
 const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
     ssr: false,
@@ -44,6 +44,7 @@ const DECLINE_KEYWORDS = ["decline", "nahi", "no", "cancel", "mana", "mat karo"]
 
 
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
+  const { db } = useFirebase(); // Get initialized db from context
   const { 
     isEmergencyActive,
     isOnline, 
@@ -76,7 +77,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   
   const debouncedUpdateDriverLocation = useDebouncedCallback(
     (lat: number, lng: number) => {
-      if (user) {
+      if (user && db) {
         setDoc(doc(db, "driver_locations", user.uid), {
           driver_id: user.uid, latitude: lat, longitude: lng, timestamp: serverTimestamp(),
         }, { merge: true });
@@ -97,7 +98,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   }, [resetTranscript]);
 
   const handleRideDecision = useCallback(async (ride: Ride, decision: 'ACCEPT' | 'DECLINE') => {
-      if (!user || driverVoiceState === 'UPDATING_RIDE') return;
+      if (!user || driverVoiceState === 'UPDATING_RIDE' || !db) return;
 
       setDriverVoiceState('UPDATING_RIDE');
       SpeechRecognition.stopListening();
@@ -145,7 +146,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
               cleanupDriverVoiceState();
           }
       }
-  }, [user, userProfile, driverVoiceState, speak, cleanupDriverVoiceState]);
+  }, [user, userProfile, driverVoiceState, speak, cleanupDriverVoiceState, db]);
   
     // Driver: Process voice decision for incoming ride
     useEffect(() => {
@@ -248,7 +249,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   useEffect(() => {
     let watcherId: number | null = null;
     let lastUpdateTime = 0;
-    if (role === 'driver' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
+    if (role === 'driver' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status) && db) {
       const rideDocRef = doc(db, "rides", activeRide.id);
       const handleSuccess = (position: GeolocationPosition) => {
         if (Date.now() - lastUpdateTime < LOCATION_STREAMING_INTERVAL) return;
@@ -262,10 +263,10 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       if (user) deleteDoc(doc(db, "driver_locations", user.uid));
     }
     return () => { if (watcherId !== null) navigator.geolocation.clearWatch(watcherId); };
-  }, [role, activeRide, user]);
+  }, [role, activeRide, user, db]);
 
   const handleDriverStatusChange = async (isOnline: boolean) => {
-    if (!user || !location) return;
+    if (!user || !location || !db) return;
     setIsOnlineAsDriver(isOnline);
     if (isOnline) {
       await setDoc(doc(db, "driver_locations", user.uid), {
@@ -277,15 +278,15 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   };
   
   useEffect(() => {
-    if (role === 'rider' && !activeRide) {
+    if (role === 'rider' && !activeRide && db) {
       const q = query(collection(db, "driver_locations"));
       const unsubscribe = onSnapshot(q, (snapshot) => setDrivers(snapshot.docs.map(doc => doc.data() as any)));
       return () => unsubscribe();
     } else { setDrivers([]); }
-  }, [role, activeRide]);
+  }, [role, activeRide, db]);
 
   useEffect(() => {
-    if (rideId) {
+    if (rideId && db) {
       const rideDocRef = doc(db, "rides", rideId);
       unsubscribeRideRef.current = onSnapshot(rideDocRef, (docSnap) => {
         if (docSnap.exists()) {
@@ -296,11 +297,11 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       });
     } else { if (unsubscribeRideRef.current) unsubscribeRideRef.current(); }
     return () => { if (unsubscribeRideRef.current) unsubscribeRideRef.current(); };
-  }, [rideId, role]);
+  }, [rideId, role, db]);
 
   // Driver: Listen for pending rides assigned to me
   useEffect(() => {
-      if (role === 'driver' && isOnlineAsDriver && !activeRide && user) {
+      if (role === 'driver' && isOnlineAsDriver && !activeRide && user && db) {
           const q = query(
               collection(db, "rides"), 
               where("notifiedDriverId", "==", user.uid), 
@@ -320,12 +321,12 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
           if (driverVoiceState !== 'IDLE') { cleanupDriverVoiceState(); }
       }
       return () => { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); }
-  }, [role, isOnlineAsDriver, activeRide, user, driverVoiceState, pendingRideForDriver, cleanupDriverVoiceState]);
+  }, [role, isOnlineAsDriver, activeRide, user, driverVoiceState, pendingRideForDriver, cleanupDriverVoiceState, db]);
 
 
   const handleRequestRide = async (finalDestination?: string, mode?: 'cab' | 'auto' | 'bike', priceEstimate?: number) => {
     const destinationToUse = finalDestination || destination;
-    if (!user || !location || !destinationToUse) return;
+    if (!user || !location || !destinationToUse || !db) return;
     setIsRequesting(true);
     try {
       const rideDocRef = await addDoc(collection(db, "rides"), {
@@ -345,13 +346,13 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   }
 
   const handleCompleteRide = async () => {
-      if (!rideId) return;
+      if (!rideId || !db) return;
       await updateDoc(doc(db, "rides", rideId), { status: 'completed', completedAt: serverTimestamp() });
       setRideId(null); setActiveRide(null);
   };
   
   const handleCancelRide = async () => {
-      if (!rideId) return;
+      if (!rideId || !db) return;
       await updateDoc(doc(db, "rides", rideId), { status: 'cancelled' });
       setRideId(null); setActiveRide(null);
   };

@@ -6,8 +6,8 @@ import { useLocalStorage } from '@/hooks/use-local-storage';
 import type { Settings, NiaAction, VoiceDialogState } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { uploadRecordingToFirebase } from '@/lib/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
@@ -87,6 +87,7 @@ const getSupportedMimeType = () => {
 };
 
 export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
+  const { functions } = useFirebase(); // Get initialized functions from context
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -118,9 +119,9 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   }, []);
 
   const processVoiceCommand = useCallback(async (transcript: string) => {
+    if (!functions) return;
     setVoiceCommandState({ status: 'processing', message: 'Thinking...' });
     try {
-        const functions = getFunctions(app);
         const niaAction = httpsCallable<any, NiaAction>(functions, 'niaAction');
         const result = await niaAction({ prompt: transcript });
         const action = result.data;
@@ -146,7 +147,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
           description: "Could not connect to the AI assistant."
         });
     }
-  }, [speak, toast, triggerEmergency]);
+  }, [speak, toast, triggerEmergency, functions]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);

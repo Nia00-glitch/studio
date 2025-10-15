@@ -1,10 +1,16 @@
 
-import { storage } from '@/lib/firebase';
 import { ref, uploadBytes } from 'firebase/storage';
+import { getStorage } from 'firebase/storage';
+import { getApps, getApp, initializeApp } from 'firebase/app';
 
 // ✅ Smart Firebase Upload with Console Report
 export const uploadRecordingToFirebase = async (blob: Blob) => {
   try {
+    // This is a temporary workaround because this file is not wrapped in the provider.
+    // In a larger app, we would get `storage` from a context.
+    const app = getApps().length > 0 ? getApp() : initializeApp({});
+    const storage = getStorage(app);
+
     const timestamp = new Date().toISOString();
     const fileExtension = blob.type.split('/')[1].split(';')[0] || 'webm';
     const filename = `recordings/rec_${timestamp}.${fileExtension}`;
