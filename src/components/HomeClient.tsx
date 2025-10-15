@@ -4,7 +4,7 @@
 import 'regenerator-runtime/runtime';
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, LogOut, Loader2 } from "lucide-react";
+import { Settings, LogOut, Loader2, Mic } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -24,6 +24,7 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import OfflineIndicator from '@/components/OfflineIndicator';
 import VoiceStatus from '@/components/VoiceStatus';
 import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
+import { cn } from '@/lib/utils';
 
 const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
     ssr: false,
@@ -50,6 +51,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     isOnline, 
     voiceCommandState, setVoiceCommandState,
     voiceDialogState, setVoiceDialogState, speak,
+    isListening, toggleListening,
   } = useEmergencyContext();
 
   const { logout, user, userProfile } = useAuth();
@@ -449,6 +451,21 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       </header>
       
       <VoiceStatus />
+
+      {/* Manual Voice Button */}
+      <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
+          <Button
+              size="icon"
+              className={cn(
+                  "rounded-full h-20 w-20 shadow-lg transition-all duration-300 transform hover:scale-110",
+                  isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : "bg-primary hover:bg-primary/90"
+              )}
+              onClick={toggleListening}
+          >
+              <Mic className="h-9 w-9" />
+          </Button>
+      </div>
+
 
       <main className="flex-grow relative">
         {locationError && <div className="absolute inset-0 z-20 p-4 text-center flex items-center justify-center bg-background/80 backdrop-blur-sm"><p>{locationError}</p></div>}

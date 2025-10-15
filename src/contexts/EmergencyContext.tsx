@@ -7,7 +7,7 @@ import type { Settings, NiaAction, VoiceDialogState } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { uploadRecordingToFirebase } from '@/lib/storage';
 import { httpsCallable } from 'firebase/functions';
-import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
+import { useFirebase } from '@/lib/firebase/provider';
 
 interface EmergencyContextType {
   isEmergencyActive: boolean;
@@ -23,7 +23,8 @@ interface EmergencyContextType {
   mediaStream: MediaStream | null;
   shareLocation: () => void;
   isListening: boolean;
-  setIsListening: (isListening: boolean) => void;
+  setIsListening: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleListening: () => void;
   processVoiceCommand: (transcript: string) => Promise<void>;
   voiceCommandState: VoiceCommandState;
   setVoiceCommandState: React.Dispatch<React.SetStateAction<VoiceCommandState>>;
@@ -47,28 +48,7 @@ const defaultSettings: Settings = {
   contacts: [],
 };
 
-export const EmergencyContext = createContext<EmergencyContextType>({
-  isEmergencyActive: false,
-  triggerEmergency: () => {},
-  deactivateEmergency: () => {},
-  isOnline: true,
-  settings: defaultSettings,
-  updateSettings: () => {},
-  isRecording: false,
-  startRecording: async () => {},
-  stopRecording: () => {},
-  hasCameraPermission: false,
-  mediaStream: null,
-  shareLocation: () => {},
-  isListening: false,
-  setIsListening: () => {},
-  processVoiceCommand: async () => {},
-  voiceCommandState: initialVoiceState,
-  setVoiceCommandState: () => {},
-  voiceDialogState: initialDialogState,
-  setVoiceDialogState: () => {},
-  speak: () => {},
-});
+export const EmergencyContext = createContext<EmergencyContextType | undefined>(undefined);
 
 export const useEmergencyContext = () => {
     const context = useContext(EmergencyContext);
@@ -87,7 +67,7 @@ const getSupportedMimeType = () => {
 };
 
 export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
-  const { functions } = useFirebase(); // Get initialized functions from context
+  const { functions } = useFirebase();
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -109,13 +89,19 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
 
   const speak = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // Interrupt any ongoing speech
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-IN'; // Prioritize Indian English voice
+      utterance.lang = 'en-IN';
       window.speechSynthesis.speak(utterance);
     } else {
       console.warn("Browser does not support speech synthesis.");
     }
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    // This function now only toggles the state.
+    // The actual listening is handled by the VoiceListener component.
+    setIsListening(prev => !prev);
   }, []);
 
   const processVoiceCommand = useCallback(async (transcript: string) => {
@@ -152,13 +138,15 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    setIsOnline(navigator.onLine);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-    };
+    if (typeof window !== 'undefined') {
+        setIsOnline(navigator.onLine);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }
   }, []);
 
   const saveBlobLocally = (blob: Blob) => {
@@ -230,7 +218,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
         toast({ title: "Location Sharing Ready" });
         settings.contacts.forEach(contact => {
           if (isOnline) window.open(`https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
-          window.location.href = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
+          else window.location.href = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
         });
       }, () => toast({ variant: "destructive", title: "Location access denied" })
     );
@@ -243,7 +231,7 @@ export const EmergencyProvider = ({ children }: { children: React.ReactNode }) =
   const value = {
     isEmergencyActive, triggerEmergency, deactivateEmergency, isOnline, settings, updateSettings,
     isRecording, startRecording, stopRecording, hasCameraPermission, mediaStream, shareLocation,
-    isListening, setIsListening,
+    isListening, setIsListening, toggleListening,
     processVoiceCommand, voiceCommandState, setVoiceCommandState, speak,
     voiceDialogState, setVoiceDialogState,
   };

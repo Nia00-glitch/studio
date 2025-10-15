@@ -1,17 +1,16 @@
-
 "use client";
 
-import 'regenerator-runtime/runtime';
 import React, { useEffect } from 'react';
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useEmergencyContext } from '../contexts/EmergencyContext';
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from '@/hooks/use-toast';
 
 const VoiceListener = () => {
   const {
     isEmergencyActive,
-    setIsListening,
-    processVoiceCommand, // The new handler from context
+    isListening, // Get the listening state from context
+    setIsListening, // We still need to update the context
+    processVoiceCommand,
     isOnline,
     speak,
   } = useEmergencyContext();
@@ -19,79 +18,70 @@ const VoiceListener = () => {
 
   const {
     listening,
-    browserSupportsSpeechRecognition,
-    isMicrophoneAvailable,
     finalTranscript,
-    resetTranscript
+    resetTranscript,
+    browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
-  // Effect to send final transcript to the central command processor in the context
+  // Effect to sync library's listening state with our context's state
   useEffect(() => {
-    if (finalTranscript && !isEmergencyActive) {
-        // Only process if a wake word is detected to avoid sending every spoken word.
-        if (finalTranscript.toLowerCase().startsWith('nia')) {
-            if (!isOnline) {
-                speak("You seem to be offline. Please check your connection and try again.");
-            } else {
-                processVoiceCommand(finalTranscript);
-            }
-        }
-        resetTranscript(); // Reset after processing to be ready for the next command.
-    }
-  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive, isOnline, speak]);
-
-
-  useEffect(() => {
-      setIsListening(listening);
+    setIsListening(listening);
   }, [listening, setIsListening]);
-
-
+  
+  // Effect to start or stop listening based on the context state
   useEffect(() => {
     if (!browserSupportsSpeechRecognition) {
-      toast({
-        variant: "destructive",
-        title: "Voice Commands Not Supported",
-        description: "Your browser does not support the Web Speech API.",
-      });
+      if (isListening) { // Only toast if the user tried to activate it
+        toast({
+          variant: "destructive",
+          title: "Voice Commands Not Supported",
+          description: "Your browser does not support this feature.",
+        });
+        setIsListening(false);
+      }
       return;
     }
 
-    // This check is now more robust. We only show the toast once.
-    if (!isMicrophoneAvailable) {
-        toast({
-            variant: "destructive",
-            title: "Microphone Access Denied",
-            description: "Please enable microphone permissions in your browser settings to use voice commands.",
-            duration: Infinity, // Make it persistent until dismissed
+    if (isListening) {
+      // Start listening if the state is true and it's not already listening
+      if (!listening) {
+        SpeechRecognition.startListening({ continuous: false, language: 'en-IN' }).catch(err => {
+          console.error("Error starting listening:", err);
+          if (err.name === 'NotAllowedError') {
+             toast({
+                variant: "destructive",
+                title: "Microphone Access Denied",
+                description: "Please allow microphone access in your browser settings."
+             });
+          }
+          setIsListening(false); // Reset state on error
         });
-        return; // Don't attempt to start listening if mic is not available.
+      }
+    } else {
+      // Stop listening if the state is false and it's currently listening
+      if (listening) {
+        SpeechRecognition.stopListening();
+      }
     }
+  }, [isListening, listening, browserSupportsSpeechRecognition, toast, setIsListening]);
 
-    const startListening = () => {
-        const language = 'en-IN'; // Set to Indian English for better Hinglish recognition
-        SpeechRecognition.startListening({ continuous: true, language }).catch(err => {
-            console.error('Could not start listening:', err);
-            if (err.name === 'NotAllowedError') {
-                 toast({
-                    variant: "destructive",
-                    title: "Microphone Access Denied by User",
-                    description: "Please enable microphone permissions in your browser settings.",
-                    duration: Infinity,
-                });
-            }
-        });
-    };
-    
-    startListening();
-
-    return () => {
-      SpeechRecognition.stopListening();
-    };
-  }, [browserSupportsSpeechRecognition, isMicrophoneAvailable, toast]);
+  // Effect to process the final transcript when listening stops
+  useEffect(() => {
+    if (finalTranscript) {
+      if (!isOnline) {
+        speak("You seem to be offline. Please check your connection and try again.");
+      } else if (!isEmergencyActive) {
+        // The wake word is now implicit since the user tapped the button.
+        // We can still check for it as a safety measure if desired.
+        if (finalTranscript.toLowerCase().includes('nia')) {
+            processVoiceCommand(finalTranscript);
+        }
+      }
+      resetTranscript(); // Reset after processing to be ready for the next command.
+    }
+  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive, isOnline, speak]);
 
   return null; // This is a listener component, it does not render a UI.
 };
 
 export default VoiceListener;
-
-    
