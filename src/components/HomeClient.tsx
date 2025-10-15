@@ -1,7 +1,6 @@
 
 "use client";
 
-import 'regenerator-runtime/runtime';
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { Settings, LogOut, Loader2, Mic } from "lucide-react";
