@@ -21,7 +21,7 @@ export default function Home() {
       // If there is no user for any reason, send to login to re-initiate.
       router.replace('/login');
     } else {
-      // User is logged in (anonymously or otherwise). Now check for profile.
+      // User is logged in (mock or otherwise). Now check for profile.
       if (userProfile) {
         // Profile exists, redirect based on role.
         if (userProfile.role === 'driver') {
