@@ -69,20 +69,11 @@ const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
             destination = pickupLatLng;
         } else if (activeRide.status === 'in-progress' && activeRide.driverLive) {
             origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            // In a real app, destinationAddress would be geocoded to a LatLng
-            // For now, we'll just use the pickup location as a placeholder for the destination if it's a string
-            destination = { query: activeRide.destinationAddress, location: pickupLatLng };
+            destination = { query: activeRide.destinationAddress };
         } else {
             return;
         }
         
-        // This is a temporary fix. In a real app, you would geocode the destinationAddress to get lat/lng
-        if (typeof destination === 'string') {
-             console.warn("Destination is a string, geocoding not implemented. Using placeholder.");
-             destination = pickupLatLng; // Placeholder
-        }
-
-
         directionsService.route({
             origin: origin,
             destination: destination,
@@ -104,10 +95,10 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
     const map = useMap();
 
     useEffect(() => {
-        if (!map || !activeRide || !activeRide.driverLive) return;
+        if (!map || !activeRide || !activeRide.driverLive || !center) return;
         
         const bounds = new google.maps.LatLngBounds();
-        bounds.extend(new google.maps.LatLng(center!.lat, center!.lng));
+        bounds.extend(new google.maps.LatLng(center.lat, center.lng));
         bounds.extend(new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng));
         
         map.fitBounds(bounds, 100); // 100px padding
@@ -115,16 +106,15 @@ const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentPr
 
     if (!center) return null;
 
-    const defaultProps = {
-        center: center,
-        zoom: 15,
-        mapId: '15d7ba67048f63a6', // Custom Map ID from GCP
-        disableDefaultUI: true,
-        styles: mapStyles,
-    };
-
     return (
-        <Map {...defaultProps}>
+        <Map
+            defaultCenter={center}
+            defaultZoom={15}
+            mapId="15d7ba67048f63a6" // Custom Map ID from GCP
+            disableDefaultUI={true}
+            styles={mapStyles}
+            gestureHandling={'greedy'}
+        >
             <AdvancedMarker position={center} title="Your Location">
                 <Pin
                     background={'hsl(var(--primary))'}
