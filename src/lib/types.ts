@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export interface Contact {
@@ -60,6 +59,10 @@ export interface Ride {
         address?: string;
     };
     destinationAddress: string;
+    destinationLocation?: {
+        latitude: number;
+        longitude: number;
+    };
     status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'no_drivers_available' | 'error';
     requestedAt: any;
     notifiedDriverId?: string | null;

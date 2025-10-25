@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState, memo } from 'react';
@@ -69,7 +68,8 @@ const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
             destination = pickupLatLng;
         } else if (activeRide.status === 'in-progress' && activeRide.driverLive) {
             origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            destination = { query: activeRide.destinationAddress };
+            // In a real app, you'd geocode the destination address. For now, we use a placeholder if lat/lng aren't stored.
+            destination = activeRide.destinationLocation ? new google.maps.LatLng(activeRide.destinationLocation.latitude, activeRide.destinationLocation.longitude) : { query: activeRide.destinationAddress };
         } else {
             return;
         }
