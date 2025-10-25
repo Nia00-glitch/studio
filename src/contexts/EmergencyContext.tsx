@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { createContext, useContext, useState, useRef, useCallback } from "react";
@@ -43,7 +42,6 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const { db, storage, auth } = useFirebase();
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const incidentIdRef = useRef<string | null>(null);
 
   const [isListening, setIsListening] = useState(false);
@@ -148,19 +146,20 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     
     // Reset refs
     mediaRecorderRef.current = null;
-    chunksRef.current = [];
     incidentIdRef.current = null;
     setMediaStream(null);
   }, [db, speak]);
 
   const processVoiceIntent = useCallback(async (payload: any) => {
-    const { intent } = payload || {};
-    setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: payload, message: payload.responseText });
+    const { intent, responseText } = payload || {};
+    setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: payload, message: responseText });
     
     if (intent === "SOS_REQUEST") {
       await startRecording();
-    } else if (payload?.responseText) {
-      speak(payload.responseText);
+    }
+    
+    if (responseText) {
+      speak(responseText);
     }
   }, [startRecording, speak]);
 
@@ -168,7 +167,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     isEmergencyActive, isOnline, settings, isRecording, hasCameraPermission, mediaStream, isListening, setIsListening,
     voiceCommandState, setVoiceCommandState, voiceDialogState, setVoiceDialogState,
     updateSettings: (s: any) => setSettings(prev => ({...prev, ...s})),
-    shareLocation: () => {}, // Placeholder for location sharing logic
+    shareLocation: () => { /* Placeholder */ },
     toggleListening,
     speak,
     processVoiceIntent,

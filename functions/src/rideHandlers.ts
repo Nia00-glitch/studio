@@ -1,4 +1,3 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
@@ -11,10 +10,10 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
   }
   
   // In a real app, we'd verify this with custom claims.
-  // const isDriver = context.auth.token.role === 'driver';
-  // if (!isDriver) {
-  //   throw new functions.https.HttpsError("permission-denied", "Only verified drivers can accept rides.");
-  // }
+  const isDriver = context.auth.token.role === 'driver';
+  if (!isDriver) {
+    throw new functions.https.HttpsError("permission-denied", "Only verified drivers can accept rides.");
+  }
   
   const driverId = context.auth.uid;
   const { rideId } = data;
@@ -43,6 +42,7 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
         status: "accepted", 
         driverId: driverId,
         // driverName can be fetched from the driver's profile
+        driverName: context.auth?.token.name || "Driver",
         acceptedAt: admin.firestore.FieldValue.serverTimestamp() 
       });
     });

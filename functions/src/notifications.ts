@@ -1,4 +1,3 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { DocumentSnapshot } from "firebase-admin/firestore";
@@ -38,7 +37,12 @@ export async function notifyDriverOnRideRequest(snapshot: DocumentSnapshot, cont
   // a more sophisticated driver matching service would be needed.
   let driversQuery: admin.firestore.Query = db.collection('driver_locations').where('isOnline', '==', true);
   if (declinedBy.length > 0) {
-      driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 30));
+      if (declinedBy.length > 30) {
+        // Firestore limit for "not-in" is 30.
+        driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 30));
+      } else {
+        driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy);
+      }
   }
   
   const driversSnapshot = await driversQuery.get();
@@ -89,10 +93,14 @@ export async function notifyDriverOnRideRequest(snapshot: DocumentSnapshot, cont
     await messaging.send(message);
     // Mark the ride so we know which driver was notified.
     return snapshot.ref.update({ notifiedDriverId: nearestDriver.id, lastNotifiedAt: admin.firestore.FieldValue.serverTimestamp() });
-  } catch (error) {
+  } catch (error: any) {
     functions.logger.error(`Failed to send notification to driver ${nearestDriver.id}:`, error);
-    // TODO: Handle stale tokens by removing them from the user profile.
-    // TODO: Trigger a retry to find the *next* nearest driver.
+    // If the token is invalid, remove it and re-trigger the search for the next driver.
+    if (error.code === 'messaging/registration-token-not-registered') {
+        await db.collection('users').doc(nearestDriver.id).update({ fcmToken: admin.firestore.FieldValue.delete() });
+        // Add the failed driver to the declinedBy list to avoid re-notifying them immediately.
+        await snapshot.ref.update({ declinedBy: admin.firestore.FieldValue.arrayUnion(nearestDriver.id) });
+    }
     return null;
   }
 }

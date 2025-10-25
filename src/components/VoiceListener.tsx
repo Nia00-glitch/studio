@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect } from "react";
@@ -54,12 +53,13 @@ export default function VoiceListener() {
         
         if (resp?.data) {
           await processVoiceIntent(resp.data);
-          speak(resp.data.responseText || "Got it.");
+          // The speak logic is now inside processVoiceIntent
         } else {
           await processVoiceIntent({ prompt: finalTranscript, intent: "UNKNOWN" });
         }
       } catch (err) {
         console.error("Voice processing error:", err);
+        speak("Sorry, I had trouble understanding that.");
         await processVoiceIntent({ prompt: finalTranscript, intent: "UNKNOWN" });
       } finally {
         resetTranscript();

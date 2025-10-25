@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { Button } from "@/components/ui/button";
 import { MapPin, Siren, ShieldOff, Video, VideoOff, Link } from "lucide-react";

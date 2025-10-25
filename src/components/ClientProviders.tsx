@@ -1,4 +1,3 @@
-
 "use client";
 
 import 'regenerator-runtime/runtime'; // Import the polyfill here, at the top level.
