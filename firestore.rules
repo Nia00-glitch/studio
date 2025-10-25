@@ -3,51 +3,77 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can read/write their own profile.
+    // Helper functions to improve readability
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    function isDriver() {
+      return request.auth.token.role == 'driver';
+    }
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
+    }
+    
+    // USERS: Users can read anyone's basic profile, but only write to their own.
     match /users/{userId} {
-      allow read, update: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
     }
-
-    // Drivers can write their location. Any authenticated user can read driver locations.
+    
+    // DRIVER LOCATIONS: Only authenticated drivers can update their own location.
+    // Anyone authenticated can read driver locations to see them on the map.
     match /driver_locations/{driverId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == driverId;
+        allow read: if isSignedIn();
+        allow write: if isOwner(driverId) && isDriver();
     }
 
-    // Rides have complex rules for state transitions.
+    // RIDES: Complex rules to manage the ride lifecycle securely.
     match /rides/{rideId} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn();
 
-      // A user can only create a ride for themselves.
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.riderId;
+      // CREATE: A rider can create a ride for themselves.
+      // We validate the incoming data to ensure its integrity.
+      allow create: if isOwner(request.resource.data.riderId)
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.requestedAt == request.time;
       
-      allow update: if request.auth != null && (
-        // A rider can cancel their own ride ONLY if it's pending.
-        (request.auth.uid == resource.data.riderId && 
-         request.resource.data.status == 'cancelled' && 
+      // UPDATE: Different roles can update different fields at different times.
+      allow update: if isSignedIn() && (
+        // Case 1: Rider cancels their OWN ride, but only if it's still 'pending'.
+        (isOwner(resource.data.riderId) &&
+         request.resource.data.status == 'cancelled' &&
          resource.data.status == 'pending')
         ||
-        // An assigned driver can update the live location or mark it as in-progress/completed.
-        (request.auth.uid == resource.data.driverId && 
-         (request.resource.data.status == 'in-progress' || request.resource.data.status == 'completed' || request.resource.data.keys().hasAny(['driverLive'])))
+        // Case 2: A driver accepts a ride (transaction handled by a Cloud Function).
+        // This rule allows a function with driver credentials to update a PENDING ride to ACCEPTED.
+        (isDriver() && 
+         request.resource.data.status == 'accepted' &&
+         resource.data.status == 'pending' &&
+         request.resource.data.driverId == request.auth.uid)
         ||
-        // A driver (with a verified custom claim) can accept a ride.
-        // This is mainly handled by the transactional Cloud Function, but this rule provides a backup.
-        (request.auth.token.role == 'driver' && 
-         request.resource.data.driverId == request.auth.uid &&
-         resource.data.status == 'pending')
+        // Case 3: A driver updates the ride to 'completed' or 'in-progress'.
+        (isOwner(resource.data.driverId) && isDriver() &&
+         request.resource.data.status in ['in-progress', 'completed'] &&
+         resource.data.status in ['accepted', 'in-progress'])
+        ||
+        // Case 4: A driver adds themselves to the 'declinedBy' list.
+        (isDriver() &&
+        request.resource.data.declinedBy == resource.data.declinedBy.concat([request.auth.uid]))
       );
     }
 
-    // Incidents can be created by any authenticated user.
-    // Only the user who created it or an admin can update/read it.
+    // INCIDENTS: Only the owner or an admin can manage incident reports.
     match /incidents/{incidentId} {
-        allow create: if request.auth != null;
-        allow read, update: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.role == 'admin');
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId) || isAdmin();
     }
-
-    // Default deny all other access.
+    
+    // Default deny all other access
     match /{document=**} {
       allow read, write: if false;
     }
