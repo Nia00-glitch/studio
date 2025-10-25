@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, limit, arrayUnion } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion, where } from "firebase/firestore";
 import dynamic from 'next/dynamic';
 import type { Ride } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,7 +80,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
       if (decision === 'ACCEPT') {
           const { httpsCallable } = await import('firebase/functions');
-          const acceptRide = httpsCallable(functions, 'acceptRide');
+          const acceptRide = httpsCallable(functions, 'rideAccept');
           try {
             await acceptRide({ rideId: ride.id });
             toast({ title: "Ride Accepted", description: "Navigating to pickup." });
@@ -151,7 +151,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     };
     
     processAction().finally(() => setVoiceCommandState({ status: 'idle' }));
-  }, [voiceCommandState.lastAction]); // React only to changes in lastAction
+  }, [voiceCommandState.lastAction, voiceDialogState, location, role, setVoiceDialogState, setVoiceCommandState, speak]); // React only to changes in lastAction
   
   // Get user's location
   useEffect(() => {
@@ -211,7 +211,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   // Driver: Listen for assigned pending rides
   useEffect(() => {
     if (role === 'driver' && isOnlineAsDriver && !activeRide && user && db) {
-      const q = query(collection(db, "rides"), where("status", "==", "pending"), limit(1));
+      const q = query(collection(db, "rides"), where("status", "==", "pending"), where("notifiedDriverId", "==", user.uid), limit(1));
       const unsub = onSnapshot(q, (snap) => {
         if (!snap.empty) {
           const ride = { id: snap.docs[0].id, ...snap.docs[0].data() } as Ride;

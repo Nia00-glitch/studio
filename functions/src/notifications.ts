@@ -1,107 +1,108 @@
-
 import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-import { DocumentSnapshot } from "firebase-admin/firestore";
-
-if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
-const messaging = admin.messaging();
+import { db, messaging } from './common';
+import { FieldValue } from 'firebase-admin/firestore';
+import { DocumentSnapshot } from 'firebase-functions/v2/firestore';
 
 /**
  * Calculates the Haversine distance between two points on the Earth.
  * @returns The distance in kilometers.
  */
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the Earth in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
 }
 
+export const notifyDriverOnRideRequest = async (event: { data: DocumentSnapshot, params: { rideId: string } }) => {
+    const rideId = event.params.rideId;
+    const rideData = event.data.data();
 
-export async function notifyDriverOnRideRequest(snapshot: DocumentSnapshot, context: functions.EventContext) {
-  const rideData = snapshot.data();
-  if (!rideData || rideData.status !== 'pending') {
-    functions.logger.log(`Ride ${snapshot.id} is not in 'pending' state, skipping.`);
-    return null;
-  }
-
-  const declinedBy = rideData.declinedBy || [];
-
-  // Query for online drivers who have not already declined this ride.
-  // NOTE: 'not-in' queries are limited to 30 values. For a larger scale,
-  // a more sophisticated driver matching service would be needed.
-  let driversQuery: admin.firestore.Query = db.collection('driver_locations').where('isOnline', '==', true);
-  if (declinedBy.length > 0) {
-      if (declinedBy.length > 30) {
-        // Firestore limit for "not-in" is 30.
-        driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 30));
-      } else {
-        driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy);
-      }
-  }
-  
-  const driversSnapshot = await driversQuery.get();
-
-  if (driversSnapshot.empty) {
-    functions.logger.warn(`No available drivers for ride ${snapshot.id}.`);
-    return snapshot.ref.update({ status: 'no_drivers_available', errorMessage: 'No drivers are currently available.' });
-  }
-
-  const { latitude: rideLat, longitude: rideLng } = rideData.pickupLocation;
-  let nearestDriver: { id: string, distance: number, token: string } | null = null;
-
-  // Find the closest driver from the available pool.
-  for (const driverDoc of driversSnapshot.docs) {
-    const driverData = driverDoc.data();
-    const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
-    
-    // We need to fetch the user document to get the FCM token.
-    // This could be optimized by storing the FCM token on the driver_location doc.
-    const userDoc = await db.collection('users').doc(driverData.driver_id).get();
-    const fcmToken = userDoc.data()?.fcmToken;
-
-    if (fcmToken && (nearestDriver === null || distance < nearestDriver.distance)) {
-      nearestDriver = { id: driverData.driver_id, distance, token: fcmToken };
+    if (!rideData || rideData.status !== 'pending') {
+        functions.logger.log(`Ride ${rideId} is not in a valid state for notification, skipping.`);
+        return null;
     }
-  }
 
-  if (!nearestDriver) {
-    functions.logger.warn(`No available drivers with FCM tokens for ride ${snapshot.id}.`);
-    return snapshot.ref.update({ status: 'no_drivers_available', errorMessage: 'Could not find any drivers to notify.' });
-  }
+    functions.logger.log(`Processing ride request ${rideId}, finding nearest available driver.`);
 
-  functions.logger.log(`Notifying nearest driver ${nearestDriver.id} for ride ${snapshot.id}.`);
+    try {
+        const declinedBy = rideData.declinedBy || [];
+        
+        let driversQuery = db.collection('driver_locations').where('isOnline', '==', true);
+        
+        if (declinedBy.length > 0) {
+            driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 10));
+        }
 
-  const message = {
-    token: nearestDriver.token,
-    notification: {
-      title: "New Ride Request!",
-      body: `A rider is nearby. Estimated fare: ₹${rideData.priceEstimate || 'N/A'}.`,
-    },
-    webpush: {
-      fcm_options: { link: `/driver-home?rideId=${snapshot.id}` },
-    },
-    data: { rideId: snapshot.id },
-  };
+        const driversSnapshot = await driversQuery.get();
 
-  try {
-    await messaging.send(message);
-    // Mark the ride so we know which driver was notified.
-    return snapshot.ref.update({ notifiedDriverId: nearestDriver.id, lastNotifiedAt: admin.firestore.FieldValue.serverTimestamp() });
-  } catch (error: any) {
-    functions.logger.error(`Failed to send notification to driver ${nearestDriver.id}:`, error);
-    // If the token is invalid, remove it and re-trigger the search for the next driver.
-    if (error.code === 'messaging/registration-token-not-registered') {
-        await db.collection('users').doc(nearestDriver.id).update({ fcmToken: admin.firestore.FieldValue.delete() });
-        // Add the failed driver to the declinedBy list to avoid re-notifying them immediately.
-        await snapshot.ref.update({ declinedBy: admin.firestore.FieldValue.arrayUnion(nearestDriver.id) });
+        if (driversSnapshot.empty) {
+            await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available', errorMessage: 'No drivers are currently online or available.' });
+            return null;
+        }
+
+        let nearestDriver: { id: string, distance: number, token: string } | null = null;
+        const { latitude: rideLat, longitude: rideLng } = rideData.pickupLocation;
+
+        for (const driverDoc of driversSnapshot.docs) {
+            const driverData = driverDoc.data();
+            const driverId = driverData.driver_id;
+            const userDoc = await db.collection('users').doc(driverId).get();
+            if (!userDoc.exists()) continue;
+
+            const userData = userDoc.data();
+            if (!userData?.fcmToken) continue;
+
+            const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
+            
+            if (nearestDriver === null || distance < nearestDriver.distance) {
+                nearestDriver = { id: driverId, distance, token: userData.fcmToken };
+            }
+        }
+
+        if (!nearestDriver) {
+            await db.collection('rides').doc(rideId).update({ status: 'no_drivers_available', errorMessage: 'All nearby drivers have declined.' });
+            return null;
+        }
+
+        functions.logger.log(`Notifying nearest driver: ${nearestDriver.id} for ride ${rideId}.`);
+
+        const message = {
+            notification: {
+                title: 'New Ride Request!',
+                body: `Pickup near you. Est. fare: ₹${rideData.priceEstimate || 'N/A'}.`,
+            },
+            token: nearestDriver.token,
+            webpush: {
+                notification: { icon: '/icons/icon-192x192.png', badge: '/icons/badge.png' },
+                fcm_options: { link: `/driver-home?rideId=${rideId}` },
+            },
+            data: { rideId: rideId, url: `/driver-home?rideId=${rideId}` },
+        };
+
+        try {
+            await messaging.send(message);
+        } catch (error: any) {
+            functions.logger.error(`Error sending notification to ${nearestDriver.id}:`, error);
+            if (error.code === 'messaging/registration-token-not-registered') {
+                await db.collection('users').doc(nearestDriver.id).update({ fcmToken: FieldValue.delete() });
+                await db.collection('rides').doc(rideId).update({ declinedBy: FieldValue.arrayUnion(nearestDriver.id) });
+                // Re-triggering the logic is handled by the onUpdate trigger
+            }
+            return null;
+        }
+
+        await db.collection('rides').doc(rideId).update({ notifiedDriverId: nearestDriver.id });
+        return { status: 'success', notifiedDriver: nearestDriver.id };
+
+    } catch (error) {
+        functions.logger.error(`Failed to process ride request ${rideId}`, error);
+        await db.collection('rides').doc(rideId).update({ status: 'error', errorMessage: 'Internal error during driver matching.' });
+        return null;
     }
-    return null;
-  }
-}
+};

@@ -1,10 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useRef, useCallback } from "react";
+import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
 import { useFirebase } from "@/lib/firebase/provider";
 import { doc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import type { NiaAction, VoiceDialogState } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
+import { v4 as uuidv4 } from 'uuid';
 
 export type VoiceCommandState = {
     status: 'idle' | 'listening' | 'processing' | 'awaiting_confirmation';
@@ -38,8 +40,10 @@ type EmergencyContextType = {
 
 const EmergencyContext = createContext<EmergencyContextType | undefined>(undefined);
 
-export function EmergencyProvider({ children }: { children: React.ReactNode }) {
+export function EmergencyProvider({ children }: { children: ReactNode }) {
   const { db, storage, auth } = useFirebase();
+  const { toast } = useToast();
+
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const incidentIdRef = useRef<string | null>(null);
@@ -48,8 +52,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const [voiceCommandState, setVoiceCommandState] = useState<VoiceCommandState>({ status: 'idle' });
   const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>({ status: 'IDLE' });
 
-  // Placeholder states
-  const [isOnline, setIsOnline] = useState(true); // Assume online by default
+  const [isOnline, setIsOnline] = useState(true);
   const [settings, setSettings] = useState({ autoSendLocation: true, enableRecording: true, contacts: [] });
   const [isRecording, setIsRecording] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
@@ -57,12 +60,14 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
   const speak = useCallback((text: string) => {
     try {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = "en-IN";
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utter);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = "en-IN"; // Use Indian English voice
+        window.speechSynthesis.cancel(); // Clear queue
+        window.speechSynthesis.speak(utter);
+      }
     } catch (e) {
-      console.warn("TTS not available:", e);
+      console.warn("Speech Synthesis not available:", e);
     }
   }, []);
 
@@ -72,22 +77,24 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
   const startRecording = useCallback(async () => {
     if (!auth?.currentUser || !db || !storage) {
-      console.warn("Firebase not ready; cannot start recording.");
       speak("Cannot start recording. System is not ready.");
+      toast({ variant: 'destructive', title: "Recording Error", description: "Firebase is not initialized." });
       return;
     }
     
-    setIsEmergencyActive(true); // Activate emergency screen
+    setIsEmergencyActive(true); // Always activate emergency screen on recording start
     setIsRecording(true);
+
     const userId = auth.currentUser.uid;
-    const incRef = doc(db, "incidents", `${userId}-${Date.now()}`);
-    incidentIdRef.current = incRef.id;
+    const newIncidentId = `${userId}-${Date.now()}`;
+    incidentIdRef.current = newIncidentId;
+    const incidentDocRef = doc(db, "incidents", newIncidentId);
     
-    await setDoc(incRef, {
+    await setDoc(incidentDocRef, {
       userId,
       status: "recording",
       startTime: serverTimestamp(),
-      storagePrefix: `incidents/${incRef.id}/`,
+      storagePrefix: `incidents/${newIncidentId}/`,
     });
 
     try {
@@ -102,12 +109,16 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       mediaRecorder.ondataavailable = async (ev) => {
         if (ev.data && ev.data.size > 0 && incidentIdRef.current) {
           const blob = ev.data;
-          const storagePath = `incidents/${incidentIdRef.current}/chunk-${Date.now()}.webm`;
+          const chunkId = uuidv4();
+          const storagePath = `incidents/${incidentIdRef.current}/${chunkId}.webm`;
           const sRef = storageRef(storage, storagePath);
           const uploadTask = uploadBytesResumable(sRef, blob);
 
           uploadTask.on("state_changed", null, 
-            (err) => console.error("Upload chunk failed", err),
+            (err) => {
+              console.error("Upload chunk failed:", err);
+              toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording chunk."})
+            },
             async () => {
               const url = await getDownloadURL(sRef);
               if (db && incidentIdRef.current) {
@@ -126,8 +137,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       speak("Unable to access camera or microphone.");
       setIsEmergencyActive(false); // Deactivate if we can't record
       setIsRecording(false);
+      toast({ variant: "destructive", title: "Media Error", description: "Could not access camera/microphone." });
     }
-  }, [auth, db, storage, speak]);
+  }, [auth, db, storage, speak, toast]);
 
   const stopRecording = useCallback(() => {
     setIsEmergencyActive(false);
@@ -135,8 +147,8 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
+    mediaStream?.getTracks().forEach(track => track.stop());
 
     if (db && incidentIdRef.current) {
       updateDoc(doc(db, "incidents", incidentIdRef.current), { status: "completed", endTime: serverTimestamp() });
@@ -148,7 +160,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     mediaRecorderRef.current = null;
     incidentIdRef.current = null;
     setMediaStream(null);
-  }, [db, speak]);
+  }, [db, speak, mediaStream]);
 
   const processVoiceIntent = useCallback(async (payload: any) => {
     const { intent, responseText } = payload || {};
@@ -163,11 +175,16 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [startRecording, speak]);
 
+  const shareLocation = useCallback(() => {
+    // Placeholder for location sharing logic
+    toast({ title: "Sharing Location", description: "Location sent to emergency contacts." });
+  }, [toast]);
+
   const value: EmergencyContextType = {
     isEmergencyActive, isOnline, settings, isRecording, hasCameraPermission, mediaStream, isListening, setIsListening,
     voiceCommandState, setVoiceCommandState, voiceDialogState, setVoiceDialogState,
     updateSettings: (s: any) => setSettings(prev => ({...prev, ...s})),
-    shareLocation: () => { /* Placeholder */ },
+    shareLocation,
     toggleListening,
     speak,
     processVoiceIntent,

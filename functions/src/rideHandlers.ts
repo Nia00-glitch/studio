@@ -1,4 +1,3 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
@@ -9,10 +8,9 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "You must be logged in to accept a ride.");
   }
-  
-  // In a real app, we'd verify this with custom claims.
-  const isDriver = context.auth.token.role === 'driver';
-  if (!isDriver) {
+
+  // Use custom claims to verify the user is a driver. This is more secure.
+  if (context.auth.token.role !== 'driver') {
     throw new functions.https.HttpsError("permission-denied", "Only verified drivers can accept rides.");
   }
   
@@ -34,16 +32,15 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
 
       const rideData = rideDoc.data();
       // Check if the ride is still available to be accepted.
-      if (rideData?.status !== "pending" || rideData?.driverId) {
-        throw new functions.https.HttpsError("failed-precondition", "This ride has already been accepted by another driver.");
+      if (rideData?.status !== "pending") {
+        throw new functions.https.HttpsError("failed-precondition", "This ride has already been accepted or is no longer pending.");
       }
 
       // Atomically accept the ride.
       transaction.update(rideRef, { 
         status: "accepted", 
         driverId: driverId,
-        // driverName can be fetched from the driver's profile
-        driverName: context.auth?.token.name || "Driver",
+        driverName: context.auth?.token.name || "Driver", // Get name from auth token
         acceptedAt: admin.firestore.FieldValue.serverTimestamp() 
       });
     });
