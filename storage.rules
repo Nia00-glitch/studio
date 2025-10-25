@@ -1,13 +1,15 @@
-
 rules_version = '2';
-
 service firebase.storage {
   match /b/{bucket}/o {
-    // Secure user recordings:
-    // Users can only write to a folder that matches their own user ID.
-    // This prevents one user from accessing or overwriting another user's data.
-    match /recordings/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Only allow authenticated users to write to their own incident folder
+    match /incidents/{userId}/{incidentId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // By default, nobody can read incident recordings unless granted by server
+    // (e.g., via a signed URL for authorized personnel)
+    match /incidents/{allPaths=**} {
+      allow read: if false; 
     }
   }
 }

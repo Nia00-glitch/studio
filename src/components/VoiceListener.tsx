@@ -4,7 +4,6 @@ import React, { useEffect } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { useFirebase } from "@/lib/firebase/provider";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
-import type { NiaAction } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 
 export default function VoiceListener() {
@@ -49,7 +48,7 @@ export default function VoiceListener() {
           return;
         }
         const { httpsCallable } = await import("firebase/functions");
-        const niaAction = httpsCallable<any, NiaAction>(functions, "niaAction");
+        const niaAction = httpsCallable(functions, "niaAction");
         const resp = await niaAction({ prompt: finalTranscript });
         
         if (resp?.data) {
