@@ -1,54 +1,58 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users collection
+    // Users can only read and write to their own profile.
     match /users/{userId} {
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null;
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
     }
 
-    // Rides: structured state transitions validation
-    match /rides/{rideId} {
-      allow create: if request.auth != null
-                    && request.auth.uid == request.resource.data.riderId
-                    && request.resource.data.status == 'pending';
-      allow read: if request.auth != null;
-      allow update: if request.auth != null && (
-        // Rider can cancel their own ride before accepted
-        (request.auth.uid == resource.data.riderId
-         && request.resource.data.status in ['cancelled']
-         && resource.data.status == 'pending')
-        ||
-        // Driver can accept if they are verified driver and ride still pending
-        (request.auth.token.role == 'driver' 
-         && request.resource.data.driverId == request.auth.uid
-         && resource.data.status == 'pending'
-         && request.resource.data.status == 'accepted')
-        ||
-        // Allow server side transitions via Cloud Functions (if function uses admin SDK, it bypasses rules)
-        false
-      );
-    }
-
-    // Drivers collection for driver metadata
+    // Drivers can write their location. Authenticated users can read driver locations.
     match /driver_locations/{driverId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == driverId;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == driverId;
     }
 
-    // Incidents (SOS)
-    match /incidents/{incidentId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow read: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        request.auth.token.role == 'admin'
-      );
+    // Rules for the 'rides' collection
+    match /rides/{rideId} {
+      // Any authenticated user can read any ride (for map display purposes)
+      allow read: if request.auth != null;
+
+      // A user can only create a ride for themselves.
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.riderId;
+
+      // Update rules are more complex.
       allow update: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        request.auth.token.role == 'admin'
+        // Case 1: The rider is cancelling their own ride, but only if it's still 'pending'.
+        (request.auth.uid == resource.data.riderId &&
+         request.resource.data.status == 'cancelled' && 
+         resource.data.status == 'pending')
+        ||
+        // Case 2: A driver is accepting a ride (this should ideally be done via a secure Cloud Function).
+        // This rule allows a driver to update status to 'accepted' and set their ID.
+        (request.auth.token.role == 'driver' && 
+         request.resource.data.status == 'accepted' &&
+         resource.data.status == 'pending' &&
+         request.resource.data.driverId == request.auth.uid)
+        ||
+        // Case 3: The assigned driver is updating the ride status (e.g., to 'in-progress' or 'completed').
+        (request.auth.uid == resource.data.driverId &&
+         request.resource.data.status != resource.data.status)
+        || 
+        // Case 4: A driver is declining a ride they were notified about.
+         (request.auth.token.role == 'driver' &&
+          request.resource.data.declinedBy.hasAny([request.auth.uid]))
       );
+    }
+
+    // Incidents can be created by any authenticated user for themselves.
+    // Only the user or an admin can update/read it.
+    match /incidents/{incidentId} {
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        allow read, update: if request.auth != null && (request.auth.uid == resource.data.userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
   }
 }

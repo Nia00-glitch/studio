@@ -1,4 +1,5 @@
 
+'use server';
 /**
  * @fileOverview Shared Genkit AI and Firebase Admin configuration.
  */
