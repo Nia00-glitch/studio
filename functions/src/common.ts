@@ -4,7 +4,7 @@
  */
 import { genkit } from 'genkit';
 import { googleAI } from '@genkit-ai/googleai';
-import *dmin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 
 // Initialize firebase-admin SDK.
 // This is safe to call multiple times; it returns the existing instance.
