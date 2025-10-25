@@ -1,5 +1,6 @@
-import * as admin from "firebase-admin";
+
 import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
 import { DocumentSnapshot } from "firebase-admin/firestore";
 
 if (!admin.apps.length) admin.initializeApp();
@@ -7,62 +8,91 @@ const db = admin.firestore();
 const messaging = admin.messaging();
 
 /**
- * notifyDriverOnRideRequest runs when a new ride doc is created (status 'pending').
- * It finds nearby online drivers and sends FCM notifications.
+ * Calculates the Haversine distance between two points on the Earth.
+ * @returns The distance in kilometers.
  */
-export async function notifyDriverOnRideRequest(snapshot: DocumentSnapshot, context?: functions.EventContext) {
-  const ride = snapshot.data();
-  if (!ride) return;
-  if (ride.status !== "pending") return;
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
-  // Query drivers collection for isOnline == true
-  const driversSnap = await db.collection("driver_locations").limit(10).get();
-  
-  const tokens: string[] = [];
-  
-  const driverDocs = await db.collection("users").where('role', '==', 'driver').get();
-  const driverFcmMap: {[key: string]: string} = {};
-  driverDocs.forEach(doc => {
-    const data = doc.data();
-    if(data.fcmToken) {
-      driverFcmMap[doc.id] = data.fcmToken;
-    }
-  });
 
-  driversSnap.forEach(doc => {
-    const driverId = doc.id;
-    if (driverFcmMap[driverId]) {
-      tokens.push(driverFcmMap[driverId]);
-    }
-  });
-  
-  if (tokens.length === 0) {
-    // No drivers online; update ride to 'no_driver_found' after small delay or leave pending and implement retry logic
-    await snapshot.ref.update({ status: "no_drivers_available", errorMessage: "No drivers were found online.", noDriverAt: admin.firestore.FieldValue.serverTimestamp() });
-    return;
+export async function notifyDriverOnRideRequest(snapshot: DocumentSnapshot, context: functions.EventContext) {
+  const rideData = snapshot.data();
+  if (!rideData || rideData.status !== 'pending') {
+    functions.logger.log(`Ride ${snapshot.id} is not in 'pending' state, skipping.`);
+    return null;
   }
 
+  const declinedBy = rideData.declinedBy || [];
+
+  // Query for online drivers who have not already declined this ride.
+  // NOTE: 'not-in' queries are limited to 30 values. For a larger scale,
+  // a more sophisticated driver matching service would be needed.
+  let driversQuery: admin.firestore.Query = db.collection('driver_locations').where('isOnline', '==', true);
+  if (declinedBy.length > 0) {
+      driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 30));
+  }
+  
+  const driversSnapshot = await driversQuery.get();
+
+  if (driversSnapshot.empty) {
+    functions.logger.warn(`No available drivers for ride ${snapshot.id}.`);
+    return snapshot.ref.update({ status: 'no_drivers_available', errorMessage: 'No drivers are currently available.' });
+  }
+
+  const { latitude: rideLat, longitude: rideLng } = rideData.pickupLocation;
+  let nearestDriver: { id: string, distance: number, token: string } | null = null;
+
+  // Find the closest driver from the available pool.
+  for (const driverDoc of driversSnapshot.docs) {
+    const driverData = driverDoc.data();
+    const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
+    
+    // We need to fetch the user document to get the FCM token.
+    // This could be optimized by storing the FCM token on the driver_location doc.
+    const userDoc = await db.collection('users').doc(driverData.driver_id).get();
+    const fcmToken = userDoc.data()?.fcmToken;
+
+    if (fcmToken && (nearestDriver === null || distance < nearestDriver.distance)) {
+      nearestDriver = { id: driverData.driver_id, distance, token: fcmToken };
+    }
+  }
+
+  if (!nearestDriver) {
+    functions.logger.warn(`No available drivers with FCM tokens for ride ${snapshot.id}.`);
+    return snapshot.ref.update({ status: 'no_drivers_available', errorMessage: 'Could not find any drivers to notify.' });
+  }
+
+  functions.logger.log(`Notifying nearest driver ${nearestDriver.id} for ride ${snapshot.id}.`);
+
   const message = {
+    token: nearestDriver.token,
     notification: {
-      title: "New ride request",
-      body: `Ride requested near you. Tap to view.`,
+      title: "New Ride Request!",
+      body: `A rider is nearby. Estimated fare: ₹${rideData.priceEstimate || 'N/A'}.`,
     },
-    data: {
-      rideId: snapshot.id,
-      type: "RIDE_REQUEST",
+    webpush: {
+      fcm_options: { link: `/driver-home?rideId=${snapshot.id}` },
     },
-    tokens: tokens,
+    data: { rideId: snapshot.id },
   };
 
   try {
-    const res = await messaging.sendEachForMulticast(message as any);
-    // Log failures
-    if (res.failureCount > 0) {
-      console.warn("Some pushes failed", res.responses.filter(r => !r.success));
-    }
-    // Optionally store attempts in Firestore
-    await snapshot.ref.update({ lastNotifiedAt: admin.firestore.FieldValue.serverTimestamp(), notifiedCount: res.successCount || 0 });
-  } catch (err) {
-    console.error("FCM error", err);
+    await messaging.send(message);
+    // Mark the ride so we know which driver was notified.
+    return snapshot.ref.update({ notifiedDriverId: nearestDriver.id, lastNotifiedAt: admin.firestore.FieldValue.serverTimestamp() });
+  } catch (error) {
+    functions.logger.error(`Failed to send notification to driver ${nearestDriver.id}:`, error);
+    // TODO: Handle stale tokens by removing them from the user profile.
+    // TODO: Trigger a retry to find the *next* nearest driver.
+    return null;
   }
 }

@@ -1,60 +1,46 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users collection
+    // Users can read/write their own profile.
     match /users/{userId} {
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null;
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
     }
 
-    // Rides: structured state transitions validation
+    // Drivers can write their location. Authenticated users can read locations.
+    match /driver_locations/{driverId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == driverId;
+    }
+
+    // Rides have strict state transition rules.
     match /rides/{rideId} {
-      allow create: if request.auth != null
+      allow read: if request.auth != null;
+      allow create: if request.auth != null 
                     && request.auth.uid == request.resource.data.riderId
-                    && request.resource.data.status == 'pending'
-                    && request.resource.data.requestedAt == request.time;
-      allow read: if request.auth != null;
-      allow update: if request.auth != null && (
-        // Rider can cancel their own ride before accepted
-        (request.auth.uid == resource.data.riderId
-         && request.resource.data.status in ['cancelled']
-         && resource.data.status == 'pending')
-        ||
-        // Driver can accept if they are verified driver and ride still pending
-        (request.auth.token.role == 'driver' 
-         && request.resource.data.driverId == request.auth.uid
-         && resource.data.status == 'pending'
-         && request.resource.data.status == 'accepted')
-        ||
-        // Allow server side transitions via Cloud Functions (if function uses admin SDK, it bypasses rules)
-        false
-      );
+                    && request.resource.data.status == 'pending';
+
+      // Only the rider can cancel their own ride, and only when it's pending.
+      // The driver logic is handled by a secure Cloud Function (acceptRide).
+      allow update: if request.auth != null 
+                    && request.auth.uid == resource.data.riderId
+                    && request.resource.data.status == 'cancelled'
+                    && resource.data.status == 'pending';
     }
 
-    // Drivers collection for driver metadata
-    match /drivers/{driverId} {
-      allow read: if request.auth != null;
-      allow update: if request.auth != null && request.auth.uid == driverId;
-      allow create: if request.auth != null && request.auth.uid == driverId;
-    }
-
-    // Incidents (SOS)
+    // Incidents can be created by any authenticated user.
+    // Only the user who created it or an admin can update/read it.
     match /incidents/{incidentId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow read: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'investigator'
-      );
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        request.auth.token.role == 'admin'
-      );
+        allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+        allow read, update: if request.auth != null && (
+            request.auth.uid == resource.data.userId ||
+            request.auth.token.role == 'admin' // Assumes admin custom claim
+        );
     }
-
-    // Default deny
+    
+    // By default, deny all other access.
     match /{document=**} {
       allow read, write: if false;
     }
