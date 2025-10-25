@@ -3,13 +3,15 @@ import { onCallGenkit } from '@genkit-ai/firebase';
 import { emergencyFlow, niaActionFlow } from './simple-flow';
 import { estimateFare as estimateFareV1 } from './estimateFare';
 import { notifyDriverOnRideRequest } from './notifications';
+import { acceptRide as acceptRideV1 } from './rideHandlers';
 
 // Genkit-powered Cloud Functions
 export const simpleGenerate = onCallGenkit({}, emergencyFlow);
 export const niaAction = onCallGenkit({}, niaActionFlow);
 
-// Standard HTTPS Callable Cloud Function (renamed to avoid conflict)
+// Standard HTTPS Callable Cloud Functions
 export const estimateFare = estimateFareV1;
+export const acceptRide = acceptRideV1;
 
 // --- Firestore Triggers for Ride Matching ---
 
@@ -26,7 +28,6 @@ export const onRideUpdated = functions.firestore
         const oldData = change.before.data();
         
         // Check if the update is a driver declining the ride.
-        // We look for an increase in the declinedBy array size.
         const oldDeclinedByCount = oldData.declinedBy?.length || 0;
         const newDeclinedByCount = newData.declinedBy?.length || 0;
 

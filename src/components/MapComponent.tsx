@@ -1,159 +1,128 @@
 "use client";
 
-import React, { useEffect, useState, memo } from 'react';
-import { Map, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
-import type { Ride } from '@/lib/types';
-import { CarIcon } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useRef } from "react";
 
-interface MapComponentProps {
-    center: { lat: number; lng: number } | null;
-    drivers?: { driver_id: string; latitude: number; longitude: number; }[];
-    activeRide?: Ride | null;
-    role: 'rider' | 'driver';
-}
+type Driver = { driver_id: string; latitude: number; longitude: number; };
+type Props = {
+  center: { lat: number; lng: number } | null;
+  drivers?: Driver[];
+  destination?: { lat: number; lng: number } | null;
+  onMapLoaded?: (map: google.maps.Map) => void;
+  followUser?: boolean;
+};
 
-const mapStyles: google.maps.MapTypeStyle[] = [
-    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
-    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
-    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
-    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
-    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
-    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
-    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
-    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
-    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
-    { featureType: 'water',elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
-    { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
-];
+export default function MapComponent({ center, drivers = [], destination = null, onMapLoaded, followUser = true }: Props) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
 
-const DirectionsRenderer = ({ activeRide }: { activeRide: Ride | null }) => {
-    const map = useMap();
-    const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
-    const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
+  // Initialize map once
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!window?.google?.maps) {
+      console.error("Google Maps JS API not loaded.");
+      return;
+    }
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+        center: center ? { lat: center.lat, lng: center.lng } : { lat: 0, lng: 0 },
+        zoom: center ? 15 : 2,
+        streetViewControl: false,
+        mapTypeControl: false,
+      });
+      if (onMapLoaded) onMapLoaded(mapInstanceRef.current);
+    }
+    // No cleanup of map instance; reuse.
+  }, [onMapLoaded, center]);
 
-    useEffect(() => {
-        if (!map) return;
-        setDirectionsService(new window.google.maps.DirectionsService());
-        setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
-            suppressMarkers: true,
-            polylineOptions: { strokeColor: '#f56565', strokeWeight: 5, strokeOpacity: 0.8 },
-        }));
-    }, [map]);
+  // Update center with debounce-ish behavior
+  useEffect(() => {
+    if (!mapInstanceRef.current || !center) return;
+    // Only recenters if followUser true
+    if (!followUser) return;
+    const map = mapInstanceRef.current;
+    // Smooth pan if available
+    try {
+      map.panTo({ lat: center.lat, lng: center.lng });
+    } catch {
+      map.setCenter({ lat: center.lat, lng: center.lng });
+    }
+  }, [center, followUser]);
 
-    useEffect(() => {
-        if (directionsRenderer) {
-            directionsRenderer.setMap(map);
+  // Update destination marker
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const id = "__destination__";
+    const existing = markersRef.current.get(id);
+    if (!destination) {
+      if (existing) { existing.setMap(null); markersRef.current.delete(id); }
+      return;
+    }
+    if (existing) {
+      existing.setPosition({ lat: destination.lat, lng: destination.lng });
+    } else {
+      const marker = new google.maps.Marker({
+        position: { lat: destination.lat, lng: destination.lng },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+          scale: 5,
+          fillColor: "#2b8cff",
+          fillOpacity: 1,
+          strokeWeight: 0,
+        },
+        title: "Destination",
+      });
+      markersRef.current.set(id, marker);
+    }
+  }, [destination]);
+
+  // Sync drivers: add/update/remove markers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !window.google?.maps?.geometry) return;
+    const seen = new Set<string>();
+    for (const d of drivers) {
+      seen.add(d.driver_id);
+      const id = `driver:${d.driver_id}`;
+      let m = markersRef.current.get(id);
+      const pos = new google.maps.LatLng(d.latitude, d.longitude);
+      if (m) {
+        // Only update if position changed significantly
+        const prev = m.getPosition();
+        if (!prev || google.maps.geometry.spherical.computeDistanceBetween(prev, pos) > 5) {
+          m.setPosition(pos);
         }
-    }, [map, directionsRenderer]);
-
-    useEffect(() => {
-        if (!directionsService || !directionsRenderer || !activeRide || !['accepted', 'in-progress'].includes(activeRide.status)) {
-            directionsRenderer?.setDirections({routes: []}); // Clear route when ride is not active
-            return;
-        }
-
-        let origin, destination;
-        const pickupLatLng = new google.maps.LatLng(activeRide.pickupLocation.latitude, activeRide.pickupLocation.longitude);
-
-        if (activeRide.status === 'accepted' && activeRide.driverLive) {
-            origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            destination = pickupLatLng;
-        } else if (activeRide.status === 'in-progress' && activeRide.driverLive) {
-            origin = new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng);
-            // In a real app, you'd geocode the destination address. For now, we use a placeholder if lat/lng aren't stored.
-            destination = activeRide.destinationLocation ? new google.maps.LatLng(activeRide.destinationLocation.latitude, activeRide.destinationLocation.longitude) : { query: activeRide.destinationAddress };
-        } else {
-            return;
-        }
-        
-        directionsService.route({
-            origin: origin,
-            destination: destination,
-            travelMode: google.maps.TravelMode.DRIVING,
-        }, (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK && result) {
-                directionsRenderer.setDirections(result);
-            } else {
-                console.error(`Error fetching directions: ${status}`);
-            }
+      } else {
+        m = new google.maps.Marker({
+          position: pos,
+          map,
+          title: `Driver ${d.driver_id}`,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 5,
+            fillColor: "#00C853",
+            fillOpacity: 1,
+            strokeWeight: 0,
+          },
         });
+        markersRef.current.set(id, m);
+      }
+    }
+    // remove stale markers
+    for (const key of Array.from(markersRef.current.keys())) {
+      if (key.startsWith("driver:") && !seen.has(key.replace("driver:", ""))) {
+        const marker = markersRef.current.get(key)!;
+        marker.setMap(null);
+        markersRef.current.delete(key);
+      }
+    }
+  }, [drivers]);
 
-    }, [activeRide, directionsService, directionsRenderer]);
-
-    return null;
-};
-
-const MapComponent = ({ center, drivers = [], activeRide, role }: MapComponentProps) => {
-    const map = useMap();
-
-    useEffect(() => {
-        if (!map || !activeRide || !activeRide.driverLive || !center) return;
-        
-        const bounds = new google.maps.LatLngBounds();
-        bounds.extend(new google.maps.LatLng(center.lat, center.lng));
-        bounds.extend(new google.maps.LatLng(activeRide.driverLive.lat, activeRide.driverLive.lng));
-        
-        map.fitBounds(bounds, 100); // 100px padding
-    }, [map, activeRide, center]);
-
-    if (!center) return null;
-
-    return (
-        <Map
-            defaultCenter={center}
-            defaultZoom={15}
-            mapId="15d7ba67048f63a6" // Custom Map ID from GCP
-            disableDefaultUI={true}
-            styles={mapStyles}
-            gestureHandling={'greedy'}
-        >
-            <AdvancedMarker position={center} title="Your Location">
-                <Pin
-                    background={'hsl(var(--primary))'}
-                    borderColor={'hsl(var(--primary))'}
-                    glyphColor={'hsl(var(--primary-foreground))'}
-                />
-            </AdvancedMarker>
-
-            {role === 'rider' && !activeRide && drivers.map((driver) => (
-                 <AdvancedMarker
-                    key={driver.driver_id}
-                    position={{ lat: driver.latitude, lng: driver.longitude }}
-                    title={`Driver ${driver.driver_id.substring(0, 4)}`}
-                >
-                    <motion.div
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: Math.random() * 0.5 }}
-                        className="bg-background p-1 rounded-full shadow-lg"
-                    >
-                        <CarIcon className="h-6 w-6 text-foreground" />
-                    </motion.div>
-                </AdvancedMarker>
-            ))}
-
-            {activeRide && activeRide.driverLive && (
-                <AdvancedMarker
-                    position={{ lat: activeRide.driverLive.lat, lng: activeRide.driverLive.lng }}
-                    title="Your Driver"
-                >
-                     <div className="bg-accent p-2 rounded-full shadow-lg animate-pulse">
-                        <CarIcon className="h-6 w-6 text-accent-foreground" />
-                    </div>
-                </AdvancedMarker>
-            )}
-
-            <DirectionsRenderer activeRide={activeRide} />
-        </Map>
-    );
-};
-
-export default memo(MapComponent);
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <div ref={mapRef} style={{ height: "100%", width: "100%" }} />
+    </div>
+  );
+}

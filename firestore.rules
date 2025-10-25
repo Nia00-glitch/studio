@@ -1,61 +1,62 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // Users: Can only read/write their own profile.
+    // Users collection
     match /users/{userId} {
-      allow read, update, delete: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn();
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Driver Locations: Drivers can only create/update/delete their own location document.
-    // Riders can read all locations to see nearby drivers.
-    match /driver_locations/{driverId} {
-        allow read: if isSignedIn();
-        allow create, update, delete: if isSignedIn() && isOwner(driverId);
-    }
-    
-    // Rides: Complex rules for ride lifecycle
+    // Rides: structured state transitions validation
     match /rides/{rideId} {
-      // READ: A rider can read their own ride. A driver can read a ride they've been notified for or have accepted.
-      allow read: if isSignedIn() && 
-                    (isOwner(resource.data.riderId) || 
-                     isOwner(resource.data.notifiedDriverId) || 
-                     isOwner(resource.data.driverId));
-
-      // CREATE: A rider can create a ride for themselves.
-      allow create: if isSignedIn() && isOwner(request.resource.data.riderId);
-      
-      // UPDATE: Logic for ride lifecycle changes.
-      allow update: if isSignedIn() && (
-        // Rider can cancel their own ride if it's pending or accepted.
-        (isOwner(resource.data.riderId) && request.resource.data.status == 'cancelled' && (resource.data.status == 'pending' || resource.data.status == 'accepted')) ||
-        
-        // The notified driver can accept the ride.
-        (isOwner(resource.data.notifiedDriverId) && request.resource.data.status == 'accepted' && resource.data.status == 'pending' && request.resource.data.driverId == request.auth.uid) ||
-
-        // The notified driver can decline by adding themselves to `declinedBy`.
-        (isOwner(resource.data.notifiedDriverId) && request.resource.data.declinedBy == resource.data.declinedBy.concat([request.auth.uid])) ||
-
-        // The accepted driver can update the ride status to 'in-progress' or 'completed'.
-        (isOwner(resource.data.driverId) && (request.resource.data.status == 'in-progress' || request.resource.data.status == 'completed')) ||
-
-        // The accepted driver can update their live location.
-        (isOwner(resource.data.driverId) && request.resource.data.keys().hasOnly(['driverLive']))
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.riderId
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.requestedAt == request.time;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && (
+        // Rider can cancel their own ride before accepted
+        (request.auth.uid == resource.data.riderId
+         && request.resource.data.status in ['cancelled']
+         && resource.data.status == 'pending')
+        ||
+        // Driver can accept if they are verified driver and ride still pending
+        (request.auth.token.role == 'driver' 
+         && request.resource.data.driverId == request.auth.uid
+         && resource.data.status == 'pending'
+         && request.resource.data.status == 'accepted')
+        ||
+        // Allow server side transitions via Cloud Functions (if function uses admin SDK, it bypasses rules)
+        false
       );
-      
-      // DELETE: Rides should not be deleted, only their status updated to 'cancelled' or 'completed'.
-      allow delete: if false;
+    }
+
+    // Drivers collection for driver metadata
+    match /drivers/{driverId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == driverId;
+      allow create: if request.auth != null && request.auth.uid == driverId;
+    }
+
+    // Incidents (SOS)
+    match /incidents/{incidentId} {
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'investigator'
+      );
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.userId ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
