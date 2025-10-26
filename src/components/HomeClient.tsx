@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, LogOut, Loader2, Mic, where } from "lucide-react";
+import { Settings, LogOut, Loader2, Mic } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion, where } from "firebase/firestore";
 import dynamic from 'next/dynamic';
 import type { Ride } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
