@@ -28,9 +28,11 @@ const nextConfig: NextConfig = {
     ],
   },
   // This option correctly tells Next.js to ignore file changes in the functions directory.
-  watchOptions: {
-    ignored: ['**/functions/**', '**/workspace/**'],
-  },
+  // The 'ignored' property under 'watchOptions' is no longer a valid key in Next.js 14+
+  // and Turbopack handles this watching behavior by default.
+  // watchOptions: {
+  //   ignored: ['**/functions/**', '**/workspace/**'],
+  // },
   // Add modern security headers
   async headers() {
     return [
@@ -48,3 +50,5 @@ const nextConfig: NextConfig = {
 };
 
 export default withPWA(nextConfig);
+
+    

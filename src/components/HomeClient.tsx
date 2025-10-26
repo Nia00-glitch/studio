@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -112,7 +113,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   
   // Rider: Voice Dialog State Machine
   useEffect(() => {
-    if (role !== 'rider' || !voiceCommandState.lastAction) return;
+    if (role !== 'rider' || !voiceCommandState.lastAction || !functions) return;
 
     const { intent, entities, prompt } = voiceCommandState.lastAction;
     const currentDialogStatus = voiceDialogState.status;
@@ -124,7 +125,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             // In a real app, you'd geocode the destination. Here, we use a placeholder.
             const placeholderDestination = { lat: location.lat + 0.05, lng: location.lng + 0.05 }; 
             try {
-                const fares = await getFareQuote(location, placeholderDestination);
+                const fares = await getFareQuote(functions, location, placeholderDestination);
                 speak(`A cab is ${fares.estimates.cab} rupees, auto is ${fares.estimates.auto}. Which do you want?`);
                 setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: entities.destination, fares, pickup: location });
             } catch (err) {
@@ -151,7 +152,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     };
     
     processAction().finally(() => setVoiceCommandState({ status: 'idle' }));
-  }, [voiceCommandState.lastAction, voiceDialogState, location, role, setVoiceDialogState, setVoiceCommandState, speak]); // React only to changes in lastAction
+  }, [voiceCommandState.lastAction, voiceDialogState, location, role, setVoiceDialogState, setVoiceCommandState, speak, functions]); // React only to changes in lastAction
   
   // Get user's location
   useEffect(() => {
@@ -354,3 +355,5 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
+
+    
