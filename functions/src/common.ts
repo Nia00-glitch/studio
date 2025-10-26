@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Shared Genkit AI and Firebase Admin configuration.
@@ -20,5 +21,5 @@ export const messaging = admin.messaging();
 export const ai = genkit({
   plugins: [googleAI()],
   // You might want to enable this for debugging, but disable for production.
-  // logToFirebase: true, 
+  // logToFirebase: true,
 });

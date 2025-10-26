@@ -1,3 +1,4 @@
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
@@ -13,7 +14,7 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
   if (context.auth.token.role !== 'driver') {
     throw new functions.https.HttpsError("permission-denied", "Only verified drivers can accept rides.");
   }
-  
+
   const driverId = context.auth.uid;
   const { rideId } = data;
 
@@ -37,11 +38,11 @@ export const acceptRide = functions.https.onCall(async (data, context) => {
       }
 
       // Atomically accept the ride.
-      transaction.update(rideRef, { 
-        status: "accepted", 
+      transaction.update(rideRef, {
+        status: "accepted",
         driverId: driverId,
         driverName: context.auth?.token.name || "Driver", // Get name from auth token
-        acceptedAt: admin.firestore.FieldValue.serverTimestamp() 
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     });
 

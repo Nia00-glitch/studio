@@ -1,3 +1,4 @@
+
 import * as functions from 'firebase-functions';
 import { db, messaging } from './common';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -32,9 +33,9 @@ export const notifyDriverOnRideRequest = async (event: { data: DocumentSnapshot,
 
     try {
         const declinedBy = rideData.declinedBy || [];
-        
+
         let driversQuery = db.collection('driver_locations').where('isOnline', '==', true);
-        
+
         if (declinedBy.length > 0) {
             driversQuery = driversQuery.where('driver_id', 'not-in', declinedBy.slice(0, 10));
         }
@@ -59,7 +60,7 @@ export const notifyDriverOnRideRequest = async (event: { data: DocumentSnapshot,
             if (!userData?.fcmToken) continue;
 
             const distance = getDistance(rideLat, rideLng, driverData.latitude, driverData.longitude);
-            
+
             if (nearestDriver === null || distance < nearestDriver.distance) {
                 nearestDriver = { id: driverId, distance, token: userData.fcmToken };
             }

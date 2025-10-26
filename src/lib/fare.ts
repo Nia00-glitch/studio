@@ -33,7 +33,7 @@ interface FareQuoteResponse {
  */
 export async function getFareQuote(
     functions: Functions,
-    pickup: { lat: number; lng: number }, 
+    pickup: { lat: number; lng: number },
     drop: { lat: number; lng: number }
 ): Promise<FareEstimates> {
     const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'rideEstimate');
@@ -64,5 +64,3 @@ export async function getFareQuote(
         throw new Error("Could not connect to the fare estimation service.");
     }
 }
-
-    

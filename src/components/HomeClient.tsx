@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Settings, LogOut, Loader2, Mic } from "lucide-react";
+import { Settings, LogOut, Loader2, Mic, where } from "lucide-react";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import EmergencyScreen from "@/components/EmergencyScreen";
@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion, where } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion } from "firebase/firestore";
 import dynamic from 'next/dynamic';
 import type { Ride } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +21,7 @@ import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { getFareQuote } from "@/lib/fare";
 import OfflineIndicator from '@/components/OfflineIndicator';
 import VoiceStatus from '@/components/VoiceStatus';
-import { useFirebase } from '@/lib/firebase/provider'; 
+import { useFirebase } from '@/lib/firebase/provider';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,7 +40,7 @@ const IDLE_LOCATION_UPDATE_INTERVAL = 4000;
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   const { db, functions } = useFirebase();
   const { toast } = useToast();
-  const { 
+  const {
     isEmergencyActive,
     voiceCommandState, setVoiceCommandState,
     voiceDialogState, setVoiceDialogState, speak,
@@ -48,23 +48,23 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
   } = useEmergencyContext();
 
   const { logout, user, userProfile } = useAuth();
-  
+
   const [isOnlineAsDriver, setIsOnlineAsDriver] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  
+
   const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
   const [destination, setDestination] = useState("");
   const [isRequesting, setIsRequesting] = useState(false);
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [rideId, setRideId] = useState<string | null>(null);
-  
+
   const [pendingRideForDriver, setPendingRideForDriver] = useState<Ride | null>(null);
-  
+
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
-  
+
   const debouncedUpdateDriverLocation = useDebouncedCallback(
     (lat: number, lng: number) => {
       if (user && db) {
@@ -85,7 +85,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
           try {
             await acceptRide({ rideId: ride.id });
             toast({ title: "Ride Accepted", description: "Navigating to pickup." });
-            setRideId(ride.id); 
+            setRideId(ride.id);
             setPendingRideForDriver(null);
           } catch(error: any) {
             console.error("Accept ride error:", error);
@@ -110,7 +110,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
           }
       }
   }, [user, db, functions, toast]);
-  
+
   // Rider: Voice Dialog State Machine
   useEffect(() => {
     if (role !== 'rider' || !voiceCommandState.lastAction || !functions) return;
@@ -123,7 +123,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             if (!location) { speak("I need your location to book a ride."); setVoiceDialogState({ status: 'IDLE' }); return; }
             setVoiceDialogState({ status: 'PARSING' });
             // In a real app, you'd geocode the destination. Here, we use a placeholder.
-            const placeholderDestination = { lat: location.lat + 0.05, lng: location.lng + 0.05 }; 
+            const placeholderDestination = { lat: location.lat + 0.05, lng: location.lng + 0.05 };
             try {
                 const fares = await getFareQuote(functions, location, placeholderDestination);
                 speak(`A cab is ${fares.estimates.cab} rupees, auto is ${fares.estimates.auto}. Which do you want?`);
@@ -150,15 +150,15 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             setVoiceDialogState({ status: 'IDLE' });
         }
     };
-    
+
     processAction().finally(() => setVoiceCommandState({ status: 'idle' }));
   }, [voiceCommandState.lastAction, voiceDialogState, location, role, setVoiceDialogState, setVoiceCommandState, speak, functions]); // React only to changes in lastAction
-  
+
   // Get user's location
   useEffect(() => {
     if (!navigator.geolocation) { setLocationError("Geolocation is not supported."); return; }
     const watcher = navigator.geolocation.watchPosition(
-      (pos) => { 
+      (pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         if (role === 'driver' && isOnlineAsDriver && !activeRide) {
           debouncedUpdateDriverLocation(pos.coords.latitude, pos.coords.longitude);
@@ -183,7 +183,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       await deleteDoc(driverLocRef);
     }
   };
-  
+
   // Rider: watch nearby drivers
   useEffect(() => {
     if (role === 'rider' && !activeRide && db) {
@@ -242,8 +242,8 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       setRideId(rideDocRef.id); setDestination("");
       speak("Searching for a driver.");
       setVoiceDialogState({ status: 'IDLE' });
-    } catch (error) { 
-        setIsRequesting(false); 
+    } catch (error) {
+        setIsRequesting(false);
         speak("Sorry, there was an error booking your ride.");
         setVoiceDialogState({ status: 'IDLE' });
     }
@@ -254,9 +254,9 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
       await updateDoc(doc(db, "rides", rideId), { status: newStatus, [`${newStatus}At`]: serverTimestamp() });
       setRideId(null); setActiveRide(null);
   };
-  
+
   if (isEmergencyActive) { return <EmergencyScreen />; }
-  
+
   const renderRiderUI = () => {
     if (activeRide) {
         return (
@@ -295,7 +295,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         </Card>
     );
   };
-  
+
   const renderDriverUI = () => {
     if (pendingRideForDriver) {
         return <IncomingRideCard ride={pendingRideForDriver} onAccept={() => handleRideDecision(pendingRideForDriver, 'ACCEPT')} onDecline={() => handleRideDecision(pendingRideForDriver, 'DECLINE')} isListening={false} />
@@ -332,7 +332,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Logout" onClick={logout}><LogOut className="h-6 w-6" /></Button>
         </div>
       </header>
-      
+
       <VoiceStatus />
 
       <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
@@ -355,5 +355,3 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
-
-    
