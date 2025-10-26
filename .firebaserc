@@ -1,6 +1,7 @@
 {
   "projects": {
-    "nia": "nia-mvp"
+    "nia": "nia-mvp",
+    "default": "nia-safety-assistant"
   },
   "targets": {},
   "etags": {}
