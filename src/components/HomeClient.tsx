@@ -24,6 +24,7 @@ import VoiceStatus from '@/components/VoiceStatus';
 import { useFirebase } from '@/lib/firebase/provider';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
+import VoiceListener from "@/components/VoiceListener";
 
 const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
     ssr: false,
@@ -333,6 +334,7 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         </div>
       </header>
 
+      <VoiceListener />
       <VoiceStatus />
 
       <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
@@ -355,3 +357,5 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     </div>
   );
 }
+
+    
