@@ -9,6 +9,7 @@ import MicStatusIndicator from '@/components/MicStatusIndicator';
 import dynamic from 'next/dynamic';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { FirebaseProvider } from '@/lib/firebase/provider'; // Import the new provider
+import React from 'react';
 
 // Dynamically import the VoiceListener component with SSR turned off because it uses browser-only APIs.
 const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
