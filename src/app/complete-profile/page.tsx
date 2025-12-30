@@ -20,13 +20,26 @@ const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   role: z.enum(['rider', 'driver'], { required_error: "You must select a role." }),
   emergencyContact: z.string().optional(),
-  vehicleInfo: z.string().optional(),
+  licenseNumber: z.string().optional(),
+  plateNumber: z.string().optional(),
 }).refine(data => {
-    if (data.role === 'driver' && !data.vehicleInfo) return false;
+    // If the role is 'driver', licenseNumber must exist and be at least 5 characters long.
+    if (data.role === 'driver') {
+        return data.licenseNumber && data.licenseNumber.length >= 5;
+    }
     return true;
 }, {
-    message: "Vehicle Info is required for drivers.",
-    path: ["vehicleInfo"],
+    message: "Driving license is required and must be at least 5 characters.",
+    path: ["licenseNumber"], 
+}).refine(data => {
+    // If the role is 'driver', plateNumber must also exist and be at least 5 characters long.
+    if (data.role === 'driver') {
+        return data.plateNumber && data.plateNumber.length >= 5;
+    }
+    return true;
+}, {
+    message: "Vehicle plate number is required and must be at least 5 characters.",
+    path: ["plateNumber"],
 });
 
 
@@ -38,7 +51,7 @@ export default function CompleteProfilePage() {
 
   const form = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { name: "", role: undefined, emergencyContact: "", vehicleInfo: "" },
+    defaultValues: { name: "", role: undefined, emergencyContact: "", licenseNumber: "", plateNumber: "" },
   });
 
   const selectedRole = form.watch('role');
@@ -127,19 +140,34 @@ export default function CompleteProfilePage() {
               )}
 
               {selectedRole === 'driver' && (
-                <FormField
-                  control={form.control}
-                  name="vehicleInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Vehicle Info (e.g., Make, Model, Plate)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Toyota Camry, ABC-123" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <>
+                  <FormField
+                    control={form.control}
+                    name="licenseNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Driving License Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., DL1234567890" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="plateNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Vehicle Plate Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., HR26DK0123" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
               
               <Button type="submit" className="w-full" disabled={loading}>
