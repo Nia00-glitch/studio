@@ -1,4 +1,5 @@
 
+import 'regenerator-runtime/runtime'; // Add polyfill for react-speech-recognition
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';

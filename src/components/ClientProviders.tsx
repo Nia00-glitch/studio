@@ -1,6 +1,6 @@
 "use client";
 
-import 'regenerator-runtime/runtime'; // Import the polyfill here, at the top level.
+// The polyfill is now in the root layout, so it can be removed from here.
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/toaster';
@@ -8,11 +8,12 @@ import MicStatusIndicator from '@/components/MicStatusIndicator';
 import dynamic from 'next/dynamic';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { FirebaseProvider } from '@/lib/firebase/provider'; // Import the new provider
+import VoiceListener from './VoiceListener';
 
 // Dynamically import the VoiceListener component with SSR turned off because it uses browser-only APIs.
-const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
-  ssr: false,
-});
+// const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
+//   ssr: false,
+// });
 
 function MissingApiKeyError({ service }: { service: string }) {
   const isMaps = service === 'Google Maps';
