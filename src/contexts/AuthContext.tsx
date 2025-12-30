@@ -21,32 +21,48 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  console.log("AuthProvider: Initializing...");
   const { auth, db } = useFirebase();
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth || !db) return;
+    if (!auth || !db) {
+      console.log("AuthProvider: Firebase services not ready, skipping auth listener setup.");
+      return;
+    };
 
+    console.log("AuthProvider: Setting up Auth Listener");
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log("AuthProvider: onAuthStateChanged triggered.", { firebaseUser: firebaseUser ? firebaseUser.uid : 'No User' });
       setLoading(true);
       if (firebaseUser) {
         setUser(firebaseUser);
+        console.log("AuthProvider: User found", firebaseUser);
         const profileRef = doc(db, 'users', firebaseUser.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
           if (docSnap.exists()) {
+            console.log("AuthProvider: User profile found.", docSnap.data());
             setUserProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
           } else {
+            console.log("AuthProvider: User profile does NOT exist.");
             setUserProfile(null); // User is authenticated but has no profile
           }
+          console.log("AuthProvider: setLoading set to false (from profile snapshot).");
           setLoading(false);
+        }, (error) => {
+            console.error("AuthProvider: Error fetching profile snapshot:", error);
+            console.log("AuthProvider: setLoading set to false (from profile error).");
+            setLoading(false);
         });
         return () => unsubscribeProfile(); // Cleanup profile listener on user change
       } else {
         // No user is signed in
+        console.log("AuthProvider: No user found.");
         setUser(null);
         setUserProfile(null);
+        console.log("AuthProvider: setLoading set to false (no user).");
         setLoading(false);
       }
     });
@@ -72,14 +88,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       updatedAt: serverTimestamp(),
     };
     
-    await setDoc(userDocRef, newProfile);
+    await setDoc(userDocRef, newProfile).catch(error => {
+        console.error("AuthProvider: Error creating user profile:", error);
+        throw error; // Re-throw to be caught by the UI
+    });
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
     if (!user || !db) return;
     
     const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() }, { merge: true }).catch(error => {
+        console.error("AuthProvider: Error updating role:", error);
+        throw error;
+    });
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };

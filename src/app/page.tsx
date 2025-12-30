@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect } from 'react';
@@ -10,6 +9,14 @@ import { NIAIcon } from '@/components/icons';
 export default function Home() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
+
+  console.log("Page Rendered: Home (/)");
+  console.log("Current Auth State:", { 
+    loading, 
+    user: user ? user.uid : 'null', 
+    userProfile: userProfile ? userProfile.role : 'null' 
+  });
+
 
   useEffect(() => {
     if (loading) {

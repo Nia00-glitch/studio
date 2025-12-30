@@ -1,7 +1,6 @@
-
 "use client";
 
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useEffect } from 'react';
 import { initializeApp, getApp, getApps, type FirebaseOptions } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -20,12 +19,16 @@ interface FirebaseContextType {
 const FirebaseContext = createContext<FirebaseContextType>({
   auth: null,
   db: null,
-storage: null,
+  storage: null,
   functions: null,
 });
 
 // The provider component that will wrap our app
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
+  useEffect(() => {
+    console.log("FirebaseProvider: Component mounted.");
+  }, []);
+
   const firebaseConfig: FirebaseOptions = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -38,18 +41,25 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const services = useMemo(() => {
     // Ensure this runs only on the client
     if (typeof window === 'undefined') {
+      console.log("FirebaseProvider: SSR environment detected. Firebase services will be null.");
       return { auth: null, db: null, storage: null, functions: null };
     }
 
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     
-    return {
-      auth: getAuth(app),
-      db: getFirestore(app),
-      storage: getStorage(app),
-      functions: getFunctions(app),
-    };
-  }, [firebaseConfig]);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+    const functions = getFunctions(app);
+
+    console.log("FirebaseProvider: Initializing services...", {
+      authInitialized: !!auth,
+      dbInitialized: !!db
+    });
+
+    return { auth, db, storage, functions };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <FirebaseContext.Provider value={services}>
