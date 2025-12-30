@@ -51,7 +51,7 @@ export default function VoiceListener() {
         }
 
         const { httpsCallable } = await import("firebase/functions");
-        const niaAction = httpsCallable(functions, "niaAction");
+        const niaAction = httpsCallable(functions, "niaActionFlow");
         const resp = await niaAction({ prompt: finalTranscript });
         
         if (resp?.data) {
