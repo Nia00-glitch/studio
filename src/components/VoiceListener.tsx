@@ -1,15 +1,15 @@
 "use client";
-
 import React, { useEffect } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { useFirebase } from "@/lib/firebase/provider";
 import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { useToast } from "@/hooks/use-toast";
+import { httpsCallable } from "firebase/functions"; // Import here
 
 export default function VoiceListener() {
   const { finalTranscript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
   const { functions } = useFirebase();
-  const { processVoiceIntent, speak, setIsListening, isListening, toggleListening } = useEmergencyContext();
+  const { processVoiceIntent, speak, setIsListening, isListening } = useEmergencyContext();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -17,60 +17,47 @@ export default function VoiceListener() {
   }, [listening, setIsListening]);
   
   useEffect(() => {
-    if (!browserSupportsSpeechRecognition) {
-      // You can toast here or have a status indicator that the browser is not supported
-      return;
-    }
+    if (!browserSupportsSpeechRecognition) return;
 
     if (isListening) {
       SpeechRecognition.startListening({ continuous: false, language: 'en-IN' }).catch(err => {
-        console.error("Error starting listening:", err);
-        if (err.name === 'NotAllowedError') {
-           toast({
-              variant: "destructive",
-              title: "Microphone Access Denied",
-              description: "Please allow microphone access in your browser settings to use voice commands."
-           });
-        }
+        console.error("Mic Error:", err);
         setIsListening(false);
       });
     } else {
       SpeechRecognition.stopListening();
     }
-  }, [isListening, browserSupportsSpeechRecognition, toast, setIsListening]);
+  }, [isListening, browserSupportsSpeechRecognition, setIsListening]);
 
   useEffect(() => {
     if (!finalTranscript) return;
+
     (async () => {
       try {
         if (!functions) {
-          console.warn("Functions not initialized. Using local fallback for voice intent.");
-          await processVoiceIntent({ prompt: finalTranscript });
-          resetTranscript();
-          return;
+            console.warn("Functions not ready");
+            resetTranscript();
+            return;
         }
 
-        const { httpsCallable } = await import("firebase/functions");
+        console.log("Sending to AI:", finalTranscript);
+        // FIX: Use the correct flow name 'niaActionFlow'
         const niaAction = httpsCallable(functions, "niaActionFlow");
         const resp = await niaAction({ prompt: finalTranscript });
         
+        console.log("AI Response:", resp.data);
+
         if (resp?.data) {
-          // Let the context handle speaking and state changes
           await processVoiceIntent(resp.data);
-        } else {
-          // Fallback if function returns no data
-          await processVoiceIntent({ prompt: finalTranscript, intent: "UNKNOWN" });
         }
       } catch (err) {
-        console.error("Voice processing error:", err);
-        speak("Sorry, I had trouble understanding that.");
-        await processVoiceIntent({ prompt: finalTranscript, intent: "UNKNOWN" });
+        console.error("AI Error:", err);
+        speak("I'm having trouble connecting to the cloud.");
       } finally {
         resetTranscript();
       }
     })();
   }, [finalTranscript, functions, processVoiceIntent, resetTranscript, speak]);
 
-  // This component is now purely a listener, it doesn't render anything itself.
   return null;
 }
