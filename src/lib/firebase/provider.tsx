@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useMemo, useEffect } from 'react';
 import { initializeApp, getApp, getApps, type FirebaseOptions } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getFunctions, type Functions } from 'firebase/functions';
@@ -13,6 +13,7 @@ interface FirebaseContextType {
   db: Firestore | null;
   storage: FirebaseStorage | null;
   functions: Functions | null;
+  googleProvider: GoogleAuthProvider | null;
 }
 
 // Create the context with a default null value
@@ -21,6 +22,7 @@ const FirebaseContext = createContext<FirebaseContextType>({
   db: null,
   storage: null,
   functions: null,
+  googleProvider: null,
 });
 
 // The provider component that will wrap our app
@@ -42,7 +44,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     // Ensure this runs only on the client
     if (typeof window === 'undefined') {
       console.log("FirebaseProvider: SSR environment detected. Firebase services will be null.");
-      return { auth: null, db: null, storage: null, functions: null };
+      return { auth: null, db: null, storage: null, functions: null, googleProvider: null };
     }
 
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -51,13 +53,14 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
     const db = getFirestore(app);
     const storage = getStorage(app);
     const functions = getFunctions(app);
+    const googleProvider = new GoogleAuthProvider();
 
     console.log("FirebaseProvider: Initializing services...", {
       authInitialized: !!auth,
       dbInitialized: !!db
     });
 
-    return { auth, db, storage, functions };
+    return { auth, db, storage, functions, googleProvider };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
