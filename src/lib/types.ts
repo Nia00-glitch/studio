@@ -18,7 +18,9 @@ export interface UserProfile {
   phoneNumber: string;
   role: 'rider' | 'driver';
   emergencyContact?: string;
-  vehicleInfo?: string;
+  licenseNumber?: string;
+  plateNumber?: string;
+  isOnline?: boolean;
   fcmToken?: string;
   createdAt: any;
   updatedAt?: any;
