@@ -1,9 +1,9 @@
-
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import type { User } from 'firebase/auth'; // Keep type for structure
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import type { User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import { NIAIcon } from '@/components/icons';
@@ -20,87 +20,66 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// --- MOCK USER DATA ---
-const MOCK_USER: User = {
-  uid: 'mock-user-uid-12345',
-  isAnonymous: true,
-  // Add other properties as needed by your app, with mock values
-  displayName: 'Mock User',
-  email: null,
-  phoneNumber: null,
-  photoURL: null,
-  providerId: 'firebase',
-  emailVerified: false,
-  metadata: {},
-  providerData: [],
-  refreshToken: '',
-  tenantId: null,
-  delete: async () => {},
-  getIdToken: async () => '',
-  getIdTokenResult: async () => ({} as any),
-  reload: async () => {},
-  toJSON: () => ({}),
-};
-
-// Start with a null profile, so the user is forced to the complete-profile page first.
-const MOCK_INITIAL_PROFILE: UserProfile | null = null;
-
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const { db } = useFirebase();
+  const { auth, db } = useFirebase();
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // --- MOCK AUTHENTICATION ---
-    // Instead of listening to onAuthStateChanged, we just set a mock user.
-    // This completely bypasses the need to call signInAnonymously.
-    setTimeout(() => {
-      setUser(MOCK_USER);
-      
-      // Check local storage to see if a mock profile was already created
-      const storedProfile = localStorage.getItem('mock-user-profile');
-      if (storedProfile) {
-        setUserProfile(JSON.parse(storedProfile));
+    if (!auth || !db) return;
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setLoading(true);
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        const profileRef = doc(db, 'users', firebaseUser.uid);
+        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setUserProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
+          } else {
+            setUserProfile(null); // User is authenticated but has no profile
+          }
+          setLoading(false);
+        });
+        return () => unsubscribeProfile(); // Cleanup profile listener on user change
       } else {
-        setUserProfile(MOCK_INITIAL_PROFILE);
+        // No user is signed in
+        setUser(null);
+        setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
-    }, 1000); // Simulate a short loading delay
-  }, []);
+    });
+
+    return () => unsubscribe(); // Cleanup auth listener on component unmount
+  }, [auth, db]);
 
   const logout = async () => {
-    // In mock mode, logout clears the local storage and state.
-    localStorage.removeItem('mock-user-profile');
-    setUser(null);
-    setUserProfile(null);
-    // In a real app, you'd also redirect to /login.
+    if (!auth) return;
+    await auth.signOut();
+    // No need to set user/profile to null here, onAuthStateChanged will handle it
     window.location.href = '/login';
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'fcmToken'>) => {
-    if (!user) throw new Error("No mock user is signed in.");
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'fcmToken' | 'phoneNumber'>) => {
+    if (!user || !db) throw new Error("No user is signed in or Firebase is not available.");
     
-    const newProfile: UserProfile = {
+    const userDocRef = doc(db, 'users', user.uid);
+    const newProfile: Omit<UserProfile, 'uid'> = {
       ...profileData,
-      uid: user.uid,
       phoneNumber: user.phoneNumber || '',
-      createdAt: new Date(), // Use JS Date in mock mode
-      updatedAt: new Date(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
     
-    // Store in local storage to persist the session across reloads
-    localStorage.setItem('mock-user-profile', JSON.stringify(newProfile));
-    setUserProfile(newProfile);
+    await setDoc(userDocRef, newProfile);
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
-    if (!userProfile) return;
+    if (!user || !db) return;
     
-    const updatedProfile = { ...userProfile, role: newRole };
-    localStorage.setItem('mock-user-profile', JSON.stringify(updatedProfile));
-    setUserProfile(updatedProfile);
+    const userDocRef = doc(db, 'users', user.uid);
+    await setDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() }, { merge: true });
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
@@ -110,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground">
         <NIAIcon className="w-24 h-24 text-primary animate-pulse" />
         <Loader2 className="mt-8 h-8 w-8 animate-spin" />
-        <p className="mt-4 text-muted-foreground">Initializing Mock Session...</p>
+        <p className="mt-4 text-muted-foreground">Initializing Session...</p>
       </div>
     );
   }
