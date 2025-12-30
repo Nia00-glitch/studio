@@ -1,9 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import type { User } from 'firebase/auth';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import type { User } from 'firebase/auth'; // Keep type for structure
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import { NIAIcon } from '@/components/icons';
@@ -20,88 +19,87 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// --- MOCK USER DATA ---
+const MOCK_USER: User = {
+  uid: 'mock-user-uid-12345',
+  isAnonymous: true,
+  // Add other properties as needed by your app, with mock values
+  displayName: 'Mock User',
+  email: null,
+  phoneNumber: null,
+  photoURL: null,
+  providerId: 'firebase',
+  emailVerified: false,
+  metadata: {},
+  providerData: [],
+  refreshToken: '',
+  tenantId: null,
+  delete: async () => {},
+  getIdToken: async () => '',
+  getIdTokenResult: async () => ({} as any),
+  reload: async () => {},
+  toJSON: () => ({}),
+};
+
+// Start with a null profile, so the user is forced to the complete-profile page first.
+const MOCK_INITIAL_PROFILE: UserProfile | null = null;
+
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  console.log("AuthProvider: Initializing...");
-  const { auth, db } = useFirebase();
+  const { db } = useFirebase();
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth || !db) {
-      console.log("AuthProvider: Firebase services not ready, skipping auth listener setup.");
-      return;
-    };
-
-    console.log("AuthProvider: Setting up Auth Listener");
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      console.log("AuthProvider: onAuthStateChanged triggered.", { firebaseUser: firebaseUser ? firebaseUser.uid : 'No User' });
-      setLoading(true);
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        console.log("AuthProvider: User found", firebaseUser);
-        const profileRef = doc(db, 'users', firebaseUser.uid);
-        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-          if (docSnap.exists()) {
-            console.log("AuthProvider: User profile found.", docSnap.data());
-            setUserProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
-          } else {
-            console.log("AuthProvider: User profile does NOT exist.");
-            setUserProfile(null); // User is authenticated but has no profile
-          }
-          console.log("AuthProvider: setLoading set to false (from profile snapshot).");
-          setLoading(false);
-        }, (error) => {
-            console.error("AuthProvider: Error fetching profile snapshot:", error);
-            console.log("AuthProvider: setLoading set to false (from profile error).");
-            setLoading(false);
-        });
-        return () => unsubscribeProfile(); // Cleanup profile listener on user change
+    // --- MOCK AUTHENTICATION ---
+    // Instead of listening to onAuthStateChanged, we just set a mock user.
+    // This completely bypasses the need to call signInAnonymously.
+    setTimeout(() => {
+      setUser(MOCK_USER);
+      
+      // Check local storage to see if a mock profile was already created
+      const storedProfile = localStorage.getItem('mock-user-profile');
+      if (storedProfile) {
+        setUserProfile(JSON.parse(storedProfile));
       } else {
-        // No user is signed in
-        console.log("AuthProvider: No user found.");
-        setUser(null);
-        setUserProfile(null);
-        console.log("AuthProvider: setLoading set to false (no user).");
-        setLoading(false);
+        setUserProfile(MOCK_INITIAL_PROFILE);
       }
-    });
-
-    return () => unsubscribe(); // Cleanup auth listener on component unmount
-  }, [auth, db]);
+      setLoading(false);
+    }, 1000); // Simulate a short loading delay
+  }, []);
 
   const logout = async () => {
-    if (!auth) return;
-    await auth.signOut();
-    // No need to set user/profile to null here, onAuthStateChanged will handle it
+    // In mock mode, logout clears the local storage and state.
+    localStorage.removeItem('mock-user-profile');
+    setUser(null);
+    setUserProfile(null);
+    // In a real app, you'd also redirect to /login.
     window.location.href = '/login';
   };
 
-  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'fcmToken' | 'phoneNumber'>) => {
-    if (!user || !db) throw new Error("No user is signed in or Firebase is not available.");
+  const createUserProfile = async (profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'fcmToken'>) => {
+    if (!user) throw new Error("No mock user is signed in.");
     
-    const userDocRef = doc(db, 'users', user.uid);
-    const newProfile: Omit<UserProfile, 'uid'> = {
+    const newProfile: UserProfile = {
       ...profileData,
+      uid: user.uid,
       phoneNumber: user.phoneNumber || '',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      createdAt: new Date(), // Use JS Date in mock mode
+      updatedAt: new Date(),
     };
     
-    await setDoc(userDocRef, newProfile).catch(error => {
-        console.error("AuthProvider: Error creating user profile:", error);
-        throw error; // Re-throw to be caught by the UI
-    });
+    // Store in local storage to persist the session across reloads
+    localStorage.setItem('mock-user-profile', JSON.stringify(newProfile));
+    setUserProfile(newProfile);
   };
 
   const updateRole = async (newRole: 'rider' | 'driver') => {
-    if (!user || !db) return;
+    if (!userProfile) return;
     
-    const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, { role: newRole, updatedAt: serverTimestamp() }, { merge: true }).catch(error => {
-        console.error("AuthProvider: Error updating role:", error);
-        throw error;
-    });
+    const updatedProfile = { ...userProfile, role: newRole };
+    localStorage.setItem('mock-user-profile', JSON.stringify(updatedProfile));
+    setUserProfile(updatedProfile);
   };
   
   const value = { user, userProfile, loading, logout, createUserProfile, updateRole };
@@ -111,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground">
         <NIAIcon className="w-24 h-24 text-primary animate-pulse" />
         <Loader2 className="mt-8 h-8 w-8 animate-spin" />
-        <p className="mt-4 text-muted-foreground">Initializing Session...</p>
+        <p className="mt-4 text-muted-foreground">Initializing Mock Session...</p>
       </div>
     );
   }
