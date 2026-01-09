@@ -6,6 +6,7 @@ import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/fire
 import { notifyDriverOnRideRequest } from './notifications';
 import { acceptRide } from './rideHandlers';
 import * as functions from 'firebase-functions';
+import { debugGemini } from './debug';
 
 // Genkit-powered Cloud Functions
 export const simpleGenerate = onCallGenkit({}, emergencyFlow);
@@ -14,6 +15,7 @@ export const niaAction = onCallGenkit({}, niaActionFlow);
 // Standard HTTPS Callable Cloud Functions
 export const rideEstimate = estimateFare;
 export const rideAccept = acceptRide;
+export const geminiDebug = debugGemini;
 
 // --- Firestore Triggers for Ride Matching ---
 
