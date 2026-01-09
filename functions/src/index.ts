@@ -15,7 +15,7 @@ export const niaAction = onCallGenkit({}, niaActionFlow);
 // Standard HTTPS Callable Cloud Functions
 export const rideEstimate = estimateFare;
 export const rideAccept = acceptRide;
-export const geminiDebug = debugGemini;
+export const debugGemini = debugGemini;
 
 // --- Firestore Triggers for Ride Matching ---
 
