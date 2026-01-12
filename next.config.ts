@@ -27,10 +27,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // This option correctly tells Next.js to ignore file changes in the functions directory.
-  watchOptions: {
-    ignored: ['**/functions/**', '**/workspace/**'],
-  },
   // Add modern security headers
   async headers() {
     return [

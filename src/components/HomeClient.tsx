@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -13,17 +12,18 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, addDoc, updateDoc, limit, runTransaction, arrayUnion } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, addDoc, updateDoc, limit, arrayUnion, where } from "firebase/firestore";
 import dynamic from 'next/dynamic';
-import type { Ride, VoiceDialogState, DriverVoiceState } from "@/lib/types";
+import type { Ride } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { getFareQuote } from "@/lib/fare";
-import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import OfflineIndicator from '@/components/OfflineIndicator';
 import VoiceStatus from '@/components/VoiceStatus';
-import { useFirebase } from '@/lib/firebase/provider'; // Use the new central provider
+import { useFirebase } from '@/lib/firebase/provider';
 import { cn } from '@/lib/utils';
+import { useToast } from "@/hooks/use-toast";
+import VoiceListener from "@/components/VoiceListener";
 
 const IncomingRideCard = dynamic(() => import('@/components/IncomingRideCard'), {
     ssr: false,
@@ -35,30 +35,23 @@ const MapComponent = dynamic(() => import('@/components/MapComponent'), {
   loading: () => <div className="flex items-center justify-center h-full bg-muted"><Loader2 className="h-8 w-8 animate-spin" /></div>,
 });
 
-const LOCATION_STREAMING_INTERVAL = 5000;
 const IDLE_LOCATION_UPDATE_INTERVAL = 4000;
-const DRIVER_DECISION_TIMEOUT = 10000; // 10 seconds
-
-const ACCEPT_KEYWORDS = ["accept", "haan", "yes", "theek hai", "ok", "okay", "chalo", "kar do"];
-const DECLINE_KEYWORDS = ["decline", "nahi", "no", "cancel", "mana", "mat karo"];
-
 
 export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
-  const { db } = useFirebase(); // Get initialized db from context
-  const { 
+  const { db, functions } = useFirebase();
+  const { toast } = useToast();
+  const {
     isEmergencyActive,
-    isOnline, 
     voiceCommandState, setVoiceCommandState,
     voiceDialogState, setVoiceDialogState, speak,
     isListening, toggleListening,
   } = useEmergencyContext();
 
   const { logout, user, userProfile } = useAuth();
-  
+
   const [isOnlineAsDriver, setIsOnlineAsDriver] = useState(false);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const generalLocationWatcherRef = useRef<number | null>(null);
 
   const [drivers, setDrivers] = useState<{ driver_id: string; latitude: number; longitude: number; }[]>([]);
   const [destination, setDestination] = useState("");
@@ -66,263 +59,173 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [rideId, setRideId] = useState<string | null>(null);
-  
+
   const [pendingRideForDriver, setPendingRideForDriver] = useState<Ride | null>(null);
-  const [driverVoiceState, setDriverVoiceState] = useState<DriverVoiceState>("IDLE");
-  const driverDecisionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const { finalTranscript, resetTranscript } = useSpeechRecognition();
-  
+
   const unsubscribeRideRef = useRef<(() => void) | null>(null);
   const unsubscribePendingRideRef = useRef<(() => void) | null>(null);
-  
+
   const debouncedUpdateDriverLocation = useDebouncedCallback(
     (lat: number, lng: number) => {
       if (user && db) {
         setDoc(doc(db, "driver_locations", user.uid), {
-          driver_id: user.uid, latitude: lat, longitude: lng, timestamp: serverTimestamp(),
+          driver_id: user.uid, latitude: lat, longitude: lng, timestamp: serverTimestamp(), isOnline: true,
         }, { merge: true });
       }
     },
     IDLE_LOCATION_UPDATE_INTERVAL
   );
 
-  const cleanupDriverVoiceState = useCallback(() => {
-    SpeechRecognition.stopListening();
-    if (driverDecisionTimeoutRef.current) {
-        clearTimeout(driverDecisionTimeoutRef.current);
-        driverDecisionTimeoutRef.current = null;
-    }
-    setDriverVoiceState("IDLE");
-    setPendingRideForDriver(null);
-    resetTranscript();
-  }, [resetTranscript]);
-
   const handleRideDecision = useCallback(async (ride: Ride, decision: 'ACCEPT' | 'DECLINE') => {
-      if (!user || driverVoiceState === 'UPDATING_RIDE' || !db) return;
-
-      setDriverVoiceState('UPDATING_RIDE');
-      SpeechRecognition.stopListening();
-
-      const rideDocRef = doc(db, "rides", ride.id);
+      if (!user || !db || !functions) return;
 
       if (decision === 'ACCEPT') {
+          const { httpsCallable } = await import('firebase/functions');
+          const acceptRide = httpsCallable(functions, 'rideAccept');
           try {
-              await runTransaction(db, async (transaction) => {
-                  const rideDoc = await transaction.get(rideDocRef);
-                  if (!rideDoc.exists()) throw "Ride does not exist.";
-                  
-                  const currentRideData = rideDoc.data();
-                  if (currentRideData.status !== 'pending' || currentRideData.driverId) {
-                      throw "RIDE_TAKEN";
-                  }
-                  
-                  transaction.update(rideDocRef, {
-                      status: 'accepted',
-                      driverId: user.uid,
-                      driverName: userProfile?.name || 'Driver',
-                      acceptedAt: serverTimestamp(),
-                  });
-              });
-              speak("Ride accepted. Navigating to pickup.");
-              setRideId(ride.id); 
-          } catch (error) {
-              if (error === "RIDE_TAKEN") {
-                  speak("Ride has already been taken.");
-              } else {
-                  speak("Could not accept ride. Please try again.");
-              }
-          } finally {
-              cleanupDriverVoiceState();
+            await acceptRide({ rideId: ride.id });
+            toast({ title: "Ride Accepted", description: "Navigating to pickup." });
+            setRideId(ride.id);
+            setPendingRideForDriver(null);
+          } catch(error: any) {
+            console.error("Accept ride error:", error);
+            if(error.code?.includes('failed-precondition')) {
+              toast({ variant: 'destructive', title: "Ride Gone", description: "Sorry, this ride has already been taken." });
+            } else {
+              toast({ variant: 'destructive', title: "Error", description: "Could not accept ride. Please try again." });
+            }
+            setPendingRideForDriver(null);
           }
       } else { // DECLINE
           try {
+              const rideDocRef = doc(db, "rides", ride.id);
               await updateDoc(rideDocRef, {
                   declinedBy: arrayUnion(user.uid)
               });
-              speak("Ride declined.");
+              toast({ title: "Ride Declined" });
           } catch (error) {
-              speak("Could not decline ride.");
+              toast({ variant: 'destructive', title: "Error", description: "Could not decline ride." });
           } finally {
-              cleanupDriverVoiceState();
+             setPendingRideForDriver(null);
           }
       }
-  }, [user, userProfile, driverVoiceState, speak, cleanupDriverVoiceState, db]);
-  
-    // Driver: Process voice decision for incoming ride
-    useEffect(() => {
-        if (role !== 'driver' || driverVoiceState !== 'LISTENING_DECISION' || !finalTranscript || !pendingRideForDriver) return;
-        const transcript = finalTranscript.toLowerCase().trim();
-        if (!transcript) return;
-        resetTranscript();
-
-        if (ACCEPT_KEYWORDS.some(kw => transcript.includes(kw))) {
-            handleRideDecision(pendingRideForDriver, 'ACCEPT');
-        } else if (DECLINE_KEYWORDS.some(kw => transcript.includes(kw))) {
-            handleRideDecision(pendingRideForDriver, 'DECLINE');
-        }
-    }, [finalTranscript, role, driverVoiceState, pendingRideForDriver, handleRideDecision, resetTranscript]);
-
+  }, [user, db, functions, toast]);
 
   // Rider: Voice Dialog State Machine
   useEffect(() => {
-    if (role !== 'rider') return;
-    const { status, lastAction } = voiceCommandState;
+    if (role !== 'rider' || !voiceCommandState.lastAction || !functions) return;
+
+    const { intent, entities, prompt } = voiceCommandState.lastAction;
+    const currentDialogStatus = voiceDialogState.status;
 
     const processAction = async () => {
-        if (status !== 'awaiting_confirmation' || !lastAction) return;
-        
-        const currentDialogState = voiceDialogState.status;
-
-        if (currentDialogState === 'IDLE' && lastAction.intent === 'RIDE_REQUEST' && lastAction.entities.destination) {
-            if (!location) { speak("I need your location to book a ride. Please enable location services."); setVoiceDialogState({ status: 'ERROR', message: 'Location not available.' }); return; }
-            if (!isOnline) { speak("You seem to be offline. Please check your connection."); setVoiceDialogState({ status: 'IDLE' }); return; }
-            
+        if (currentDialogStatus === 'IDLE' && intent === 'RIDE_REQUEST' && entities?.destination) {
+            if (!location) { speak("I need your location to book a ride."); setVoiceDialogState({ status: 'IDLE' }); return; }
             setVoiceDialogState({ status: 'PARSING' });
-            const dest = lastAction.entities.destination;
-            const placeholderDestination = { lat: location.lat + 0.1, lng: location.lng + 0.1 };
+            // In a real app, you'd geocode the destination. Here, we use a placeholder.
+            const placeholderDestination = { lat: location.lat + 0.05, lng: location.lng + 0.05 };
             try {
-                const fares = await getFareQuote({ lat: location.lat, lng: location.lng }, placeholderDestination);
-                if (!fares) throw new Error("Could not retrieve fare information.");
-                speak(`Cab is ${fares.estimates.cab} rupees, Auto is ${fares.estimates.auto}, and Bike is ${fares.estimates.bike}. Which mode would you like?`);
-                setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: dest, fares, pickup: location });
-            } catch (err: any) {
-                if(err.message?.includes("DIRECTIONS_FAILED")) { speak(`Sorry, I couldn't find a route to ${dest}. Please try another destination.`); }
-                else { speak(`Sorry, I couldn't get fares for ${dest}. Please try again.`); }
-                setVoiceDialogState({ status: 'ERROR', message: err.message });
+                const fares = await getFareQuote(functions, location, placeholderDestination);
+                speak(`A cab is ${fares.estimates.cab} rupees, auto is ${fares.estimates.auto}. Which do you want?`);
+                setVoiceDialogState({ status: 'AWAITING_MODE_CONFIRMATION', destination: entities.destination, fares, pickup: location });
+            } catch (err) {
+                speak(`Sorry, I couldn't get fares for ${entities.destination}.`);
+                setVoiceDialogState({ status: 'IDLE' });
             }
-        } else if (currentDialogState === 'AWAITING_MODE_CONFIRMATION') {
-            const transcript = (lastAction.prompt || '').toLowerCase();
-            let mode: 'cab' | 'auto' | 'bike' | null = null;
-            if (transcript.includes('cab') || transcript.includes('car') || transcript.includes('gaadi')) mode = 'cab';
-            else if (transcript.includes('auto')) mode = 'auto';
-            else if (transcript.includes('bike')) mode = 'bike';
+        } else if (currentDialogStatus === 'AWAITING_MODE_CONFIRMATION') {
+            const transcript = (prompt || '').toLowerCase();
+            const mode = transcript.includes('cab') ? 'cab' : transcript.includes('auto') ? 'auto' : null;
             if (mode) {
-                const priceEstimate = voiceDialogState.fares.estimates[mode];
-                speak(`${mode} for ${priceEstimate} rupees. Should I confirm?`);
-                setVoiceDialogState({ ...voiceDialogState, status: 'AWAITING_FINAL_CONFIRMATION', mode, priceEstimate });
-            } else { speak("Sorry, I didn't catch that. Please say cab, auto, or bike."); }
-        } else if (currentDialogState === 'AWAITING_FINAL_CONFIRMATION' && lastAction.intent === 'CONFIRMATION_YES') {
+                const price = voiceDialogState.fares.estimates[mode];
+                speak(`${mode} for ${price} rupees. Should I confirm?`);
+                setVoiceDialogState({ ...voiceDialogState, status: 'AWAITING_FINAL_CONFIRMATION', mode, priceEstimate: price });
+            } else {
+                speak("Sorry, I didn't get that. Cab or auto?");
+            }
+        } else if (currentDialogStatus === 'AWAITING_FINAL_CONFIRMATION' && intent === 'CONFIRMATION_YES') {
             setVoiceDialogState({ status: 'EXECUTING' });
-            speak("Okay, booking your ride now.");
             await handleRequestRide(voiceDialogState.destination, voiceDialogState.mode, voiceDialogState.priceEstimate);
-        } else if (lastAction.intent === 'CONFIRMATION_NO' || lastAction.intent === 'CANCEL_RIDE') {
-            speak("Okay, cancelling the request.");
+        } else if (intent === 'CANCEL_RIDE' || intent === 'CONFIRMATION_NO') {
+            speak("Okay, cancelling.");
             setVoiceDialogState({ status: 'IDLE' });
         }
     };
-    
-    processAction().finally(() => { setVoiceCommandState({ status: 'idle' }); });
-  }, [voiceCommandState, voiceDialogState, location, speak, setVoiceDialogState, setVoiceCommandState, role, isOnline]);
-  
-  
-  // Driver: Announce incoming ride
-  useEffect(() => {
-      if (role === 'driver' && pendingRideForDriver && driverVoiceState === "IDLE") {
-          setDriverVoiceState("ANNOUNCING");
-          speak(`New ride to ${pendingRideForDriver.destinationAddress} for ${pendingRideForDriver.priceEstimate} rupees. Accept or Decline?`);
-          
-          setTimeout(() => {
-              setDriverVoiceState("LISTENING_DECISION");
-              SpeechRecognition.startListening({ language: 'en-IN' });
-              driverDecisionTimeoutRef.current = setTimeout(() => {
-                  speak("No response received. Ride declined.");
-                  handleRideDecision(pendingRideForDriver, 'DECLINE');
-              }, DRIVER_DECISION_TIMEOUT);
-          }, 4000); // Give TTS time to speak
-      }
-  }, [role, pendingRideForDriver, driverVoiceState, speak, cleanupDriverVoiceState, handleRideDecision]);
 
+    processAction().finally(() => setVoiceCommandState({ status: 'idle' }));
+  }, [voiceCommandState.lastAction, voiceDialogState, location, role, setVoiceDialogState, setVoiceCommandState, speak, functions]); // React only to changes in lastAction
 
+  // Get user's location
   useEffect(() => {
-    if (!navigator.geolocation) { setLocationError("Geolocation is not supported by your browser."); return; }
-    const handleSuccess = (position: GeolocationPosition) => {
-      const { latitude, longitude } = position.coords;
-      setLocation({ lat: latitude, lng: longitude }); setLocationError(null);
-      if (role === 'driver' && isOnlineAsDriver && !activeRide) { debouncedUpdateDriverLocation(latitude, longitude); }
-    };
-    const handleError = (error: GeolocationPositionError) => { setLocationError("Location permission denied. Please enable it to use the app."); };
-    const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
-    generalLocationWatcherRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
-    return () => { if (generalLocationWatcherRef.current !== null) navigator.geolocation.clearWatch(generalLocationWatcherRef.current); };
+    if (!navigator.geolocation) { setLocationError("Geolocation is not supported."); return; }
+    const watcher = navigator.geolocation.watchPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        if (role === 'driver' && isOnlineAsDriver && !activeRide) {
+          debouncedUpdateDriverLocation(pos.coords.latitude, pos.coords.longitude);
+        }
+      },
+      () => setLocationError("Location permission denied."),
+      { enableHighAccuracy: true }
+    );
+    return () => navigator.geolocation.clearWatch(watcher);
   }, [role, isOnlineAsDriver, activeRide, debouncedUpdateDriverLocation]);
 
-  useEffect(() => {
-    let watcherId: number | null = null;
-    let lastUpdateTime = 0;
-    if (role === 'driver' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status) && db) {
-      const rideDocRef = doc(db, "rides", activeRide.id);
-      const handleSuccess = (position: GeolocationPosition) => {
-        if (Date.now() - lastUpdateTime < LOCATION_STREAMING_INTERVAL) return;
-        lastUpdateTime = Date.now();
-        const { latitude, longitude, heading } = position.coords;
-        updateDoc(rideDocRef, {
-            'driverLive.lat': latitude, 'driverLive.lng': longitude, 'driverLive.heading': heading ?? null, 'driverLive.updatedAt': serverTimestamp(),
-        }).catch(err => console.error("Failed to update driver live location", err));
-      };
-      watcherId = navigator.geolocation.watchPosition(handleSuccess, () => {}, { enableHighAccuracy: true });
-      if (user) deleteDoc(doc(db, "driver_locations", user.uid));
-    }
-    return () => { if (watcherId !== null) navigator.geolocation.clearWatch(watcherId); };
-  }, [role, activeRide, user, db]);
-
-  const handleDriverStatusChange = async (isOnline: boolean) => {
+  // Driver online/offline status
+  const handleDriverStatusChange = async (online: boolean) => {
     if (!user || !location || !db) return;
-    setIsOnlineAsDriver(isOnline);
-    if (isOnline) {
-      await setDoc(doc(db, "driver_locations", user.uid), {
-          driver_id: user.uid, latitude: location.lat, longitude: location.lng, timestamp: serverTimestamp(),
+    setIsOnlineAsDriver(online);
+    const driverLocRef = doc(db, "driver_locations", user.uid);
+    if (online) {
+      await setDoc(driverLocRef, {
+          driver_id: user.uid, latitude: location.lat, longitude: location.lng, timestamp: serverTimestamp(), isOnline: true
       }, { merge: true });
     } else {
-      await deleteDoc(doc(db, "driver_locations", user.uid));
+      await deleteDoc(driverLocRef);
     }
   };
-  
+
+  // Rider: watch nearby drivers
   useEffect(() => {
     if (role === 'rider' && !activeRide && db) {
-      const q = query(collection(db, "driver_locations"));
-      const unsubscribe = onSnapshot(q, (snapshot) => setDrivers(snapshot.docs.map(doc => doc.data() as any)));
-      return () => unsubscribe();
+      const q = query(collection(db, "driver_locations"), where("isOnline", "==", true));
+      const unsub = onSnapshot(q, (snap) => setDrivers(snap.docs.map(d => d.data() as any)));
+      return () => unsub();
     } else { setDrivers([]); }
   }, [role, activeRide, db]);
 
+  // Listen to active ride updates
   useEffect(() => {
     if (rideId && db) {
-      const rideDocRef = doc(db, "rides", rideId);
-      unsubscribeRideRef.current = onSnapshot(rideDocRef, (docSnap) => {
+      const unsub = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (docSnap.exists()) {
-          const rideData = { id: docSnap.id, ...docSnap.data() } as Ride;
-          setActiveRide(rideData);
-          setIsRequesting(rideData.status === 'pending' && role === 'rider');
-        } else { setActiveRide(null); setRideId(null); }
+          const data = { id: docSnap.id, ...docSnap.data() } as Ride;
+          setActiveRide(data);
+          setIsRequesting(data.status === 'pending');
+        } else {
+          setActiveRide(null); setRideId(null);
+        }
       });
-    } else { if (unsubscribeRideRef.current) unsubscribeRideRef.current(); }
-    return () => { if (unsubscribeRideRef.current) unsubscribeRideRef.current(); };
-  }, [rideId, role, db]);
+      return () => unsub();
+    }
+  }, [rideId, db]);
 
-  // Driver: Listen for pending rides assigned to me
+  // Driver: Listen for assigned pending rides
   useEffect(() => {
-      if (role === 'driver' && isOnlineAsDriver && !activeRide && user && db) {
-          const q = query(
-              collection(db, "rides"), 
-              where("notifiedDriverId", "==", user.uid), 
-              where("status", "==", "pending"), 
-              limit(1)
-          );
-          unsubscribePendingRideRef.current = onSnapshot(q, (snapshot) => {
-              if (!snapshot.empty) {
-                  const newRide = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ride;
-                  if (pendingRideForDriver?.id !== newRide.id) { setPendingRideForDriver(newRide); }
-              } else {
-                  if (driverVoiceState !== 'IDLE') { cleanupDriverVoiceState(); }
-              }
-          });
-      } else { 
-          if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); 
-          if (driverVoiceState !== 'IDLE') { cleanupDriverVoiceState(); }
-      }
-      return () => { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); }
-  }, [role, isOnlineAsDriver, activeRide, user, driverVoiceState, pendingRideForDriver, cleanupDriverVoiceState, db]);
+    if (role === 'driver' && isOnlineAsDriver && !activeRide && user && db) {
+      const q = query(collection(db, "rides"), where("status", "==", "pending"), where("notifiedDriverId", "==", user.uid), limit(1));
+      const unsub = onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+          const ride = { id: snap.docs[0].id, ...snap.docs[0].data() } as Ride;
+          if (!ride.declinedBy?.includes(user.uid) && pendingRideForDriver?.id !== ride.id) {
+            setPendingRideForDriver(ride);
+          }
+        } else {
+          setPendingRideForDriver(null);
+        }
+      });
+      return () => unsub();
+    } else { if (unsubscribePendingRideRef.current) unsubscribePendingRideRef.current(); setPendingRideForDriver(null); }
+  }, [role, isOnlineAsDriver, activeRide, user, db, pendingRideForDriver]);
 
 
   const handleRequestRide = async (finalDestination?: string, mode?: 'cab' | 'auto' | 'bike', priceEstimate?: number) => {
@@ -334,47 +237,44 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         riderId: user.uid, riderName: userProfile?.name || "Rider",
         pickupLocation: { latitude: location.lat, longitude: location.lng },
         destinationAddress: destinationToUse, status: "pending", requestedAt: serverTimestamp(),
-        mode, priceEstimate, declinedBy: [],
+        mode: mode || 'cab', priceEstimate: priceEstimate || 0, declinedBy: [],
       });
       setRideId(rideDocRef.id); setDestination("");
-      speak("Your ride has been booked. We are finding a driver for you.");
+      speak("Searching for a driver.");
       setVoiceDialogState({ status: 'IDLE' });
-    } catch (error) { 
-        setIsRequesting(false); 
-        speak("Sorry, there was an error booking your ride. Please try again.");
-        setVoiceDialogState({ status: 'ERROR', message: 'Failed to create ride doc.'});
+    } catch (error) {
+        setIsRequesting(false);
+        speak("Sorry, there was an error booking your ride.");
+        setVoiceDialogState({ status: 'IDLE' });
     }
   }
 
-  const handleCompleteRide = async () => {
+  const handleRideAction = async (newStatus: 'completed' | 'cancelled') => {
       if (!rideId || !db) return;
-      await updateDoc(doc(db, "rides", rideId), { status: 'completed', completedAt: serverTimestamp() });
-      setRideId(null); setActiveRide(null);
-  };
-  
-  const handleCancelRide = async () => {
-      if (!rideId || !db) return;
-      await updateDoc(doc(db, "rides", rideId), { status: 'cancelled' });
+      await updateDoc(doc(db, "rides", rideId), { status: newStatus, [`${newStatus}At`]: serverTimestamp() });
       setRideId(null); setActiveRide(null);
   };
 
   if (isEmergencyActive) { return <EmergencyScreen />; }
-  
+
   const renderRiderUI = () => {
     if (activeRide) {
         return (
             <Card className="w-full">
                 <CardHeader>
-                    <CardTitle>Ride in Progress</CardTitle>
+                    <CardTitle>
+                      {activeRide.status === 'pending' && 'Finding your ride...'}
+                      {activeRide.status === 'accepted' && `Driver is on the way!`}
+                      {activeRide.status === 'in-progress' && `Ride to ${activeRide.destinationAddress}`}
+                      {activeRide.status === 'no_drivers_available' && 'No Drivers Found'}
+                    </CardTitle>
                     <CardDescription>
-                        {activeRide.status === 'accepted' && `Your driver, ${activeRide.driverName}, is on the way.`}
-                        {activeRide.status === 'in-progress' && `Heading to ${activeRide.destinationAddress}.`}
-                        {activeRide.status === 'pending' && `Searching for a driver...`}
-                        {activeRide.status === 'no_drivers_available' && `Sorry, no drivers were available.`}
+                        {activeRide.driverName && `Your driver is ${activeRide.driverName}.`}
+                        {activeRide.status === 'no_drivers_available' && `Sorry, no drivers were available. Please try again.`}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Button variant="destructive" onClick={handleCancelRide}>Cancel Ride</Button>
+                    <Button variant="destructive" onClick={() => handleRideAction('cancelled')}>Cancel Ride</Button>
                 </CardContent>
             </Card>
         )
@@ -395,30 +295,21 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
         </Card>
     );
   };
-  
+
   const renderDriverUI = () => {
-    if (pendingRideForDriver && driverVoiceState !== "IDLE") {
-        return (
-            <IncomingRideCard
-                ride={pendingRideForDriver}
-                onAccept={() => handleRideDecision(pendingRideForDriver, 'ACCEPT')}
-                onDecline={() => handleRideDecision(pendingRideForDriver, 'DECLINE')}
-                isListening={driverVoiceState === 'LISTENING_DECISION'}
-            />
-        )
+    if (pendingRideForDriver) {
+        return <IncomingRideCard ride={pendingRideForDriver} onAccept={() => handleRideDecision(pendingRideForDriver, 'ACCEPT')} onDecline={() => handleRideDecision(pendingRideForDriver, 'DECLINE')} isListening={false} />
     }
     if (activeRide) {
         return (
              <Card className="w-full">
                 <CardHeader>
                     <CardTitle>Ride in Progress</CardTitle>
-                    <CardDescription>
-                       Destination: {activeRide.destinationAddress}
-                    </CardDescription>
+                    <CardDescription>To: {activeRide.destinationAddress}</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Button className="w-full bg-green-500 hover:bg-green-600" onClick={handleCompleteRide}>Complete Ride</Button>
-                    <Button variant="destructive" className="w-full mt-2" onClick={handleCancelRide}>Cancel Ride</Button>
+                <CardContent className="grid gap-2">
+                    <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => handleRideAction('completed')}>Complete Ride</Button>
+                    <Button variant="destructive" className="w-full" onClick={() => handleRideAction('cancelled')}>Cancel Ride</Button>
                 </CardContent>
             </Card>
         )
@@ -426,17 +317,10 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
     return (
         <div className="flex items-center space-x-2">
           <Switch id="driver-status" checked={isOnlineAsDriver} onCheckedChange={handleDriverStatusChange} />
-          <Label htmlFor="driver-status">{isOnlineAsDriver ? "You are Online" : "Go Online to receive requests"}</Label>
+          <Label htmlFor="driver-status">{isOnlineAsDriver ? "You are Online" : "Go Online"}</Label>
         </div>
     );
   };
-
-  const getMapPropsForRole = useCallback(() => {
-    if (role === 'rider' && activeRide && ['accepted', 'in-progress'].includes(activeRide.status)) {
-        return { center: location, activeRide: activeRide, role: 'rider' as const };
-    }
-    return { center: location, drivers: role === 'rider' ? drivers : [], role: role };
-  }, [role, activeRide, location, drivers]);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -448,28 +332,20 @@ export default function HomeClient({ role }: { role: 'rider' | 'driver' }) {
             <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Logout" onClick={logout}><LogOut className="h-6 w-6" /></Button>
         </div>
       </header>
-      
+
+      <VoiceListener />
       <VoiceStatus />
 
-      {/* Manual Voice Button */}
       <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
-          <Button
-              size="icon"
-              className={cn(
-                  "rounded-full h-20 w-20 shadow-lg transition-all duration-300 transform hover:scale-110",
-                  isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : "bg-primary hover:bg-primary/90"
-              )}
-              onClick={toggleListening}
-          >
+          <Button size="icon" className={cn("rounded-full h-20 w-20 shadow-lg transition-all duration-300 transform hover:scale-110", isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : "bg-primary hover:bg-primary/90")} onClick={toggleListening}>
               <Mic className="h-9 w-9" />
           </Button>
       </div>
 
-
       <main className="flex-grow relative">
         {locationError && <div className="absolute inset-0 z-20 p-4 text-center flex items-center justify-center bg-background/80 backdrop-blur-sm"><p>{locationError}</p></div>}
         {!location && !locationError && <div className="absolute inset-0 flex items-center justify-center bg-background z-20"><Loader2 className="h-8 w-8 animate-spin" /><p className="ml-4">Getting your location...</p></div>}
-        {location && <MapComponent {...getMapPropsForRole()} />}
+        {location && <MapComponent center={location} drivers={drivers} activeRide={activeRide} role={role} />}
       </main>
 
       <footer className="p-4 border-t bg-background shadow-lg z-10">

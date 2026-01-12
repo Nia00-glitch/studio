@@ -1,9 +1,8 @@
-
 "use client";
 
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useEffect } from 'react';
 import { initializeApp, getApp, getApps, type FirebaseOptions } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getFunctions, type Functions } from 'firebase/functions';
@@ -14,18 +13,24 @@ interface FirebaseContextType {
   db: Firestore | null;
   storage: FirebaseStorage | null;
   functions: Functions | null;
+  googleProvider: GoogleAuthProvider | null;
 }
 
 // Create the context with a default null value
 const FirebaseContext = createContext<FirebaseContextType>({
   auth: null,
   db: null,
-storage: null,
+  storage: null,
   functions: null,
+  googleProvider: null,
 });
 
 // The provider component that will wrap our app
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
+  useEffect(() => {
+    console.log("FirebaseProvider: Component mounted.");
+  }, []);
+
   const firebaseConfig: FirebaseOptions = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -38,18 +43,26 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   const services = useMemo(() => {
     // Ensure this runs only on the client
     if (typeof window === 'undefined') {
-      return { auth: null, db: null, storage: null, functions: null };
+      console.log("FirebaseProvider: SSR environment detected. Firebase services will be null.");
+      return { auth: null, db: null, storage: null, functions: null, googleProvider: null };
     }
 
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     
-    return {
-      auth: getAuth(app),
-      db: getFirestore(app),
-      storage: getStorage(app),
-      functions: getFunctions(app),
-    };
-  }, [firebaseConfig]);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+    const functions = getFunctions(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    console.log("FirebaseProvider: Initializing services...", {
+      authInitialized: !!auth,
+      dbInitialized: !!db
+    });
+
+    return { auth, db, storage, functions, googleProvider };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <FirebaseContext.Provider value={services}>

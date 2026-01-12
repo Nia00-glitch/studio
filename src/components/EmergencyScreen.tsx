@@ -1,10 +1,9 @@
-
 "use client";
 
-import { useContext, useEffect, useState, useRef } from "react";
-import { EmergencyContext } from "@/contexts/EmergencyContext";
+import { useEffect, useRef } from "react";
+import { useEmergencyContext } from "@/contexts/EmergencyContext";
 import { Button } from "@/components/ui/button";
-import { MapPin, Siren, ShieldOff, Video, Mic, Phone, WifiOff, MessageSquare, VideoOff, Link } from "lucide-react";
+import { MapPin, Siren, ShieldOff, Video, VideoOff, Link } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,8 +19,7 @@ export default function EmergencyScreen() {
     mediaStream,
     hasCameraPermission,
     shareLocation,
-  } = useContext(EmergencyContext);
-  const [status, setStatus] = useState("Activating emergency protocols...");
+  } = useEmergencyContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
 
@@ -35,32 +33,27 @@ export default function EmergencyScreen() {
   useEffect(() => {
     // Auto-perform actions based on settings when emergency mode activates
     if (settings.autoSendLocation) {
-      setStatus("Automatically sending location...");
       shareLocation();
     }
     if (settings.enableRecording && !isRecording) {
-      setStatus("Starting hidden recording...");
       startRecording();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleRecording = () => {
     if (!settings.enableRecording) {
-      setStatus("Recording is disabled in settings.");
+      toast({ title: "Recording is disabled in settings." });
       return;
     }
 
     if (isRecording) {
       stopRecording();
-      setStatus("Stopped hidden recording. File saved.");
     } else {
       startRecording();
-      setStatus("Started hidden recording.");
     }
   };
 
   const handleAlertAuthorities = () => {
-    setStatus("Alerting nearest authorities...");
     // This is a simulation; in a real app, this would call a backend service.
     // For now, it dials a generic emergency number.
     window.location.href = "tel:100";
@@ -79,7 +72,6 @@ export default function EmergencyScreen() {
         
         navigator.clipboard.writeText(mapsLink).then(() => {
           toast({ title: "Location Link Copied!", description: "You can now paste it in any message." });
-          setStatus("Location link copied to clipboard.");
         }).catch(err => {
           toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy link to clipboard." });
         });
@@ -100,7 +92,7 @@ export default function EmergencyScreen() {
         </div>
         {!isOnline && (
             <div className="flex items-center gap-2 text-lg font-semibold bg-primary-foreground/20 px-4 py-2 rounded-full">
-                <WifiOff />
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-wifi-off"><line x1="2" x2="22" y1="2" y2="22"></line><path d="M8.5 16.5a5 5 0 0 1 7 0"></path><path d="M2 8.82a15 15 0 0 1 4.17-2.65"></path><path d="M10.66 5c4.01 0 7.34 1.66 9.34 4.18"></path><path d="M16.85 11.25a10 10 0 0 1 2.18 1.93"></path><path d="M22 12.83A15 15 0 0 0 17.6 9"></path></svg>
                 <span>OFFLINE</span>
             </div>
         )}
@@ -120,7 +112,7 @@ export default function EmergencyScreen() {
                 </div>
             )}
         </div>
-        <p className="text-xl font-light mb-4">{status}</p>
+        <p className="text-xl font-light mb-4">Emergency protocols are active.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
             <ActionButton icon={MapPin} label="Send Location" onClick={shareLocation} />
             <ActionButton icon={Link} label="Copy Link" onClick={handleCopyLocationLink} />

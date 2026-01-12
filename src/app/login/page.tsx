@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect } from 'react';
@@ -11,6 +10,12 @@ import { motion } from 'framer-motion';
 export default function LoginPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  console.log("Page Rendered: Login (/login)");
+  console.log("Current Auth State:", { 
+    loading, 
+    user: user ? user.uid : 'null',
+  });
 
   useEffect(() => {
     // With mock auth, we just wait for the user object to be loaded

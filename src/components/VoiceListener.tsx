@@ -1,87 +1,69 @@
 "use client";
+import 'regenerator-runtime/runtime'; // <--- THIS MUST BE THE FIRST LINE
+import React, { useEffect } from "react";
+import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
+import { useFirebase } from "@/lib/firebase/provider";
+import { useEmergencyContext } from "@/contexts/EmergencyContext";
+import { useToast } from "@/hooks/use-toast";
+import { httpsCallable } from "firebase/functions";
 
-import React, { useEffect } from 'react';
-import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
-import { useEmergencyContext } from '../contexts/EmergencyContext';
-import { useToast } from '@/hooks/use-toast';
-
-const VoiceListener = () => {
-  const {
-    isEmergencyActive,
-    isListening, // Get the listening state from context
-    setIsListening, // We still need to update the context
-    processVoiceCommand,
-    isOnline,
-    speak,
-  } = useEmergencyContext();
+export default function VoiceListener() {
+  const { finalTranscript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  const { functions } = useFirebase();
+  const { processVoiceIntent, speak, setIsListening, isListening } = useEmergencyContext();
   const { toast } = useToast();
 
-  const {
-    listening,
-    finalTranscript,
-    resetTranscript,
-    browserSupportsSpeechRecognition
-  } = useSpeechRecognition();
-
-  // Effect to sync library's listening state with our context's state
+  // Sync internal listening state with the hook
   useEffect(() => {
     setIsListening(listening);
   }, [listening, setIsListening]);
   
-  // Effect to start or stop listening based on the context state
+  // Manage Microphone Start/Stop
   useEffect(() => {
-    if (!browserSupportsSpeechRecognition) {
-      if (isListening) { // Only toast if the user tried to activate it
-        toast({
-          variant: "destructive",
-          title: "Voice Commands Not Supported",
-          description: "Your browser does not support this feature.",
-        });
-        setIsListening(false);
-      }
-      return;
-    }
+    if (!browserSupportsSpeechRecognition) return;
 
     if (isListening) {
-      // Start listening if the state is true and it's not already listening
-      if (!listening) {
-        SpeechRecognition.startListening({ continuous: false, language: 'en-IN' }).catch(err => {
-          console.error("Error starting listening:", err);
-          if (err.name === 'NotAllowedError') {
-             toast({
-                variant: "destructive",
-                title: "Microphone Access Denied",
-                description: "Please allow microphone access in your browser settings."
-             });
-          }
-          setIsListening(false); // Reset state on error
-        });
-      }
+      SpeechRecognition.startListening({ continuous: false, language: 'en-IN' }).catch(err => {
+        console.error("Mic Error:", err);
+        // Don't disable listening immediately on error, retry or let user know
+      });
     } else {
-      // Stop listening if the state is false and it's currently listening
-      if (listening) {
-        SpeechRecognition.stopListening();
-      }
+      SpeechRecognition.stopListening();
     }
-  }, [isListening, listening, browserSupportsSpeechRecognition, toast, setIsListening]);
+  }, [isListening, browserSupportsSpeechRecognition]);
 
-  // Effect to process the final transcript when listening stops
+  // Handle Voice Results (The Brain Connection)
   useEffect(() => {
-    if (finalTranscript) {
-      if (!isOnline) {
-        speak("You seem to be offline. Please check your connection and try again.");
-      } else if (!isEmergencyActive) {
-        // The wake word is now implicit since the user tapped the button.
-        // We can still check for it as a safety measure if desired.
-        if (finalTranscript.toLowerCase().includes('nia')) {
-            processVoiceCommand(finalTranscript);
+    if (!finalTranscript) return;
+
+    const handleVoiceCommand = async () => {
+      try {
+        if (!functions) {
+            console.warn("Functions not ready");
+            resetTranscript();
+            return;
         }
+
+        console.log("Sending to AI:", finalTranscript);
+        // Correct Flow Name: 'niaActionFlow'
+        const niaAction = httpsCallable(functions, "niaActionFlow");
+        const resp = await niaAction({ prompt: finalTranscript });
+        
+        console.log("AI Response:", resp.data);
+
+        if (resp?.data) {
+          await processVoiceIntent(resp.data);
+        }
+      } catch (err) {
+        console.error("AI Error:", err);
+        speak("I'm having trouble connecting to the cloud.");
+      } finally {
+        resetTranscript();
       }
-      resetTranscript(); // Reset after processing to be ready for the next command.
-    }
-  }, [finalTranscript, processVoiceCommand, resetTranscript, isEmergencyActive, isOnline, speak]);
+    };
 
-  return null; // This is a listener component, it does not render a UI.
-};
+    handleVoiceCommand();
+  }, [finalTranscript, functions, processVoiceIntent, resetTranscript, speak]);
 
-export default VoiceListener;
+  return null;
+}

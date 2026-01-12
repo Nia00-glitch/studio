@@ -1,9 +1,8 @@
 
 "use client";
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable, type Functions } from 'firebase/functions';
 import type { FareEstimates } from './types';
-import { initializeApp, getApp, getApps } from 'firebase/app';
 
 interface FareQuoteInput {
     pickup: { lat: number; lng: number };
@@ -26,20 +25,18 @@ interface FareQuoteResponse {
 
 /**
  * Calls the `estimateFare` Firebase Cloud Function to get fare quotes.
+ * @param functions - The Firebase Functions instance.
  * @param pickup - The pickup coordinates.
  * @param drop - The drop-off coordinates.
  * @returns A promise that resolves to the fare estimates.
  * @throws A structured error if the backend returns a failure code.
  */
 export async function getFareQuote(
-    pickup: { lat: number; lng: number }, 
+    functions: Functions,
+    pickup: { lat: number; lng: number },
     drop: { lat: number; lng: number }
 ): Promise<FareEstimates> {
-    // This is a temporary workaround because this file is not wrapped in the provider.
-    // In a larger app, we would get `functions` from a context.
-    const app = getApps().length > 0 ? getApp() : initializeApp({});
-    const functions = getFunctions(app);
-    const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'estimateFare');
+    const estimateFare = httpsCallable<FareQuoteInput, FareQuoteResponse>(functions, 'rideEstimate');
 
     try {
         const result = await estimateFare({ pickup, drop });

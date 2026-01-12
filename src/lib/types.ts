@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export interface Contact {
@@ -19,7 +18,9 @@ export interface UserProfile {
   phoneNumber: string;
   role: 'rider' | 'driver';
   emergencyContact?: string;
-  vehicleInfo?: string;
+  licenseNumber?: string;
+  plateNumber?: string;
+  isOnline?: boolean;
   fcmToken?: string;
   createdAt: any;
   updatedAt?: any;
@@ -60,6 +61,10 @@ export interface Ride {
         address?: string;
     };
     destinationAddress: string;
+    destinationLocation?: {
+        latitude: number;
+        longitude: number;
+    };
     status: 'pending' | 'accepted' | 'in-progress' | 'completed' | 'cancelled' | 'no_drivers_available' | 'error';
     requestedAt: any;
     notifiedDriverId?: string | null;

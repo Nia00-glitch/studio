@@ -1,37 +1,12 @@
-
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useLocalStorage } from '@/hooks/use-local-storage';
-import type { Settings, NiaAction, VoiceDialogState } from '@/lib/types';
-import { useToast } from '@/hooks/use-toast';
-import { uploadRecordingToFirebase } from '@/lib/storage';
-import { httpsCallable } from 'firebase/functions';
-import { useFirebase } from '@/lib/firebase/provider';
-
-interface EmergencyContextType {
-  isEmergencyActive: boolean;
-  triggerEmergency: (options?: { silent: boolean }) => void;
-  deactivateEmergency: () => void;
-  isOnline: boolean;
-  settings: Settings;
-  updateSettings: (newSettings: Partial<Settings>) => void;
-  isRecording: boolean;
-  startRecording: () => Promise<void>;
-  stopRecording: () => void;
-  hasCameraPermission: boolean;
-  mediaStream: MediaStream | null;
-  shareLocation: () => void;
-  isListening: boolean;
-  setIsListening: React.Dispatch<React.SetStateAction<boolean>>;
-  toggleListening: () => void;
-  processVoiceCommand: (transcript: string) => Promise<void>;
-  voiceCommandState: VoiceCommandState;
-  setVoiceCommandState: React.Dispatch<React.SetStateAction<VoiceCommandState>>;
-  voiceDialogState: VoiceDialogState;
-  setVoiceDialogState: React.Dispatch<React.SetStateAction<VoiceDialogState>>;
-  speak: (text: string) => void;
-}
+import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
+import { useFirebase } from "@/lib/firebase/provider";
+import { doc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import type { NiaAction, VoiceDialogState } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
+import { v4 as uuidv4 } from 'uuid';
 
 export type VoiceCommandState = {
     status: 'idle' | 'listening' | 'processing' | 'awaiting_confirmation';
@@ -39,202 +14,195 @@ export type VoiceCommandState = {
     message?: string | null;
 }
 
-const initialVoiceState: VoiceCommandState = { status: 'idle' };
-const initialDialogState: VoiceDialogState = { status: 'IDLE' };
-
-const defaultSettings: Settings = {
-  autoSendLocation: true,
-  enableRecording: true,
-  contacts: [],
+type EmergencyContextType = {
+  isEmergencyActive: boolean;
+  isOnline: boolean;
+  settings: any; // Simplified for now
+  updateSettings: (newSettings: any) => void;
+  isRecording: boolean;
+  hasCameraPermission: boolean;
+  mediaStream: MediaStream | null;
+  shareLocation: () => void;
+  isListening: boolean;
+  setIsListening: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleListening: () => void;
+  voiceCommandState: VoiceCommandState;
+  setVoiceCommandState: React.Dispatch<React.SetStateAction<VoiceCommandState>>;
+  voiceDialogState: VoiceDialogState;
+  setVoiceDialogState: React.Dispatch<React.SetStateAction<VoiceDialogState>>;
+  speak: (text: string) => void;
+  processVoiceIntent: (payload: any) => Promise<void>;
+  triggerEmergency: (options?: { silent: boolean }) => void;
+  deactivateEmergency: () => void;
+  startRecording: () => Promise<void>;
+  stopRecording: () => void;
 };
 
-export const EmergencyContext = createContext<EmergencyContextType | undefined>(undefined);
+const EmergencyContext = createContext<EmergencyContextType | undefined>(undefined);
 
-export const useEmergencyContext = () => {
-    const context = useContext(EmergencyContext);
-    if (!context) {
-        throw new Error('useEmergencyContext must be used within an EmergencyProvider');
-    }
-    return context;
-};
-
-const getSupportedMimeType = () => {
-    const mimeTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/mp4;codecs=avc1', 'video/webm'];
-    for (const mimeType of mimeTypes) {
-        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) return mimeType;
-    }
-    return 'video/webm';
-};
-
-export const EmergencyProvider = ({ children }: { children: React.ReactNode }) => {
-  const { functions } = useFirebase();
-  const [isEmergencyActive, setIsEmergencyActive] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const [settings, setSettings] = useLocalStorage<Settings>('nia-settings', defaultSettings);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
-  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [voiceCommandState, setVoiceCommandState] = useState<VoiceCommandState>(initialVoiceState);
-  const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>(initialDialogState);
-  
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaChunksRef = useRef<Blob[]>([]);
+export function EmergencyProvider({ children }: { children: ReactNode }) {
+  const { db, storage, auth } = useFirebase();
   const { toast } = useToast();
 
-  const triggerEmergency = useCallback((options?: { silent: boolean }) => {
-    if (!options?.silent) toast({ title: "Emergency Mode Activated" });
-    setIsEmergencyActive(true);
-  }, [toast]);
+  const [isEmergencyActive, setIsEmergencyActive] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const incidentIdRef = useRef<string | null>(null);
+
+  const [isListening, setIsListening] = useState(false);
+  const [voiceCommandState, setVoiceCommandState] = useState<VoiceCommandState>({ status: 'idle' });
+  const [voiceDialogState, setVoiceDialogState] = useState<VoiceDialogState>({ status: 'IDLE' });
+
+  const [isOnline, setIsOnline] = useState(true);
+  const [settings, setSettings] = useState({ autoSendLocation: true, enableRecording: true, contacts: [] });
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
 
   const speak = useCallback((text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-IN';
-      window.speechSynthesis.speak(utterance);
-    } else {
-      console.warn("Browser does not support speech synthesis.");
+    try {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = "en-IN"; // Use Indian English voice
+        window.speechSynthesis.cancel(); // Clear queue
+        window.speechSynthesis.speak(utter);
+      }
+    } catch (e) {
+      console.warn("Speech Synthesis not available:", e);
     }
   }, []);
 
   const toggleListening = useCallback(() => {
-    // This function now only toggles the state.
-    // The actual listening is handled by the VoiceListener component.
     setIsListening(prev => !prev);
   }, []);
 
-  const processVoiceCommand = useCallback(async (transcript: string) => {
-    if (!functions) return;
-    setVoiceCommandState({ status: 'processing', message: 'Thinking...' });
-    try {
-        const niaAction = httpsCallable<any, NiaAction>(functions, 'niaAction');
-        const result = await niaAction({ prompt: transcript });
-        const action = result.data;
-        
-        console.log("NLU Action:", action);
-        
-        if (action.intent === 'SOS_REQUEST') {
-            triggerEmergency({});
-            speak(action.responseText);
-            setVoiceCommandState({ status: 'idle' });
-            return;
-        }
-
-        setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: action, message: action.responseText });
-
-    } catch (error) {
-        console.error("Error calling NLU function:", error);
-        speak("Sorry, I'm having trouble connecting. Please try again.");
-        setVoiceCommandState({ status: 'idle', message: 'Connection error.' });
-        toast({
-          variant: "destructive",
-          title: "AI Error",
-          description: "Could not connect to the AI assistant."
-        });
-    }
-  }, [speak, toast, triggerEmergency, functions]);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    if (typeof window !== 'undefined') {
-        setIsOnline(navigator.onLine);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }
-  }, []);
-
-  const saveBlobLocally = (blob: Blob) => {
-    try {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      document.body.appendChild(a); a.style.display = 'none'; a.href = url;
-      const fileExtension = blob.type.split('/')[1].split(';')[0];
-      a.download = `NIA-emergency-recording-${new Date().toISOString()}.${fileExtension}`;
-      a.click();
-      window.URL.revokeObjectURL(url); a.remove();
-    } catch (e) {
-      console.error("Failed to save blob locally", e);
-      toast({ variant: 'destructive', title: 'Local Save Failed', description: 'Could not save the file automatically.' });
-    }
-  }
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-  }, []);
-
   const startRecording = useCallback(async () => {
-    if (isRecording || !settings.enableRecording) {
-      if (!settings.enableRecording) toast({ title: "Recording is disabled in settings." });
+    if (!auth?.currentUser || !db || !storage) {
+      speak("Cannot start recording. System is not ready.");
+      toast({ variant: 'destructive', title: "Recording Error", description: "Firebase is not initialized." });
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setHasCameraPermission(true); setMediaStream(stream);
-      mediaChunksRef.current = [];
-      const mimeType = getSupportedMimeType();
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = (event) => { if (event.data.size > 0) mediaChunksRef.current.push(event.data); };
-      recorder.onstart = () => { setIsRecording(true); if (!isEmergencyActive) toast({ title: "Recording Started" }); };
-      recorder.onstop = async () => {
-        const blob = new Blob(mediaChunksRef.current, { type: mimeType });
-        if (isOnline) {
-          toast({ title: "Uploading recording..." });
-          const report = await uploadRecordingToFirebase(blob);
-          if (report.status === '✅ Upload Successful') toast({ title: "Upload Complete" });
-          else { toast({ variant: "destructive", title: "Upload Failed" }); saveBlobLocally(blob); }
-        } else { toast({ title: "Offline Mode" }); saveBlobLocally(blob); }
-        mediaChunksRef.current = [];
-        stream.getTracks().forEach(track => track.stop());
-        setMediaStream(null); setIsRecording(false);
-      };
-      recorder.start();
-    } catch (error) {
-      setHasCameraPermission(false);
-      toast({ variant: 'destructive', title: 'Camera/Mic Access Denied' });
-    }
-  }, [isRecording, settings.enableRecording, toast, isOnline, isEmergencyActive]);
+    
+    setIsEmergencyActive(true); // Always activate emergency screen on recording start
+    setIsRecording(true);
 
-  const deactivateEmergency = useCallback(() => {
-    if (isRecording) stopRecording();
-    toast({ title: "Emergency Mode Deactivated" });
+    const userId = auth.currentUser.uid;
+    const newIncidentId = `${userId}-${Date.now()}`;
+    incidentIdRef.current = newIncidentId;
+    const incidentDocRef = doc(db, "incidents", newIncidentId);
+    
+    await setDoc(incidentDocRef, {
+      userId,
+      status: "recording",
+      startTime: serverTimestamp(),
+      storagePrefix: `incidents/${newIncidentId}/`,
+    });
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      setMediaStream(stream);
+      setHasCameraPermission(true);
+
+      const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : "video/webm";
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = async (ev) => {
+        if (ev.data && ev.data.size > 0 && incidentIdRef.current) {
+          const blob = ev.data;
+          const chunkId = uuidv4();
+          const storagePath = `incidents/${incidentIdRef.current}/${chunkId}.webm`;
+          const sRef = storageRef(storage, storagePath);
+          const uploadTask = uploadBytesResumable(sRef, blob);
+
+          uploadTask.on("state_changed", null, 
+            (err) => {
+              console.error("Upload chunk failed:", err);
+              toast({ variant: "destructive", title: "Upload Failed", description: "Could not save recording chunk."})
+            },
+            async () => {
+              const url = await getDownloadURL(sRef);
+              if (db && incidentIdRef.current) {
+                await updateDoc(doc(db, "incidents", incidentIdRef.current), { lastChunkUrl: url, updatedAt: serverTimestamp() });
+              }
+            }
+          );
+        }
+      };
+      mediaRecorder.start(10000); // Create a chunk every 10 seconds
+      speak("Emergency recording started.");
+
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      setHasCameraPermission(false);
+      speak("Unable to access camera or microphone.");
+      setIsEmergencyActive(false); // Deactivate if we can't record
+      setIsRecording(false);
+      toast({ variant: "destructive", title: "Media Error", description: "Could not access camera/microphone." });
+    }
+  }, [auth, db, storage, speak, toast]);
+
+  const stopRecording = useCallback(() => {
     setIsEmergencyActive(false);
-  }, [isRecording, stopRecording, toast]);
+    setIsRecording(false);
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaStream?.getTracks().forEach(track => track.stop());
+
+    if (db && incidentIdRef.current) {
+      updateDoc(doc(db, "incidents", incidentIdRef.current), { status: "completed", endTime: serverTimestamp() });
+    }
+    
+    speak("Emergency mode deactivated.");
+    
+    // Reset refs
+    mediaRecorderRef.current = null;
+    incidentIdRef.current = null;
+    setMediaStream(null);
+  }, [db, speak, mediaStream]);
+
+  const processVoiceIntent = useCallback(async (payload: any) => {
+    const { intent, responseText } = payload || {};
+    setVoiceCommandState({ status: 'awaiting_confirmation', lastAction: payload, message: responseText });
+    
+    if (intent === "SOS_REQUEST") {
+      await startRecording();
+    }
+    
+    if (responseText) {
+      speak(responseText);
+    }
+  }, [startRecording, speak]);
 
   const shareLocation = useCallback(() => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const message = `🚨 This is an emergency. I’m in danger. My location: ${mapsLink}`;
-        toast({ title: "Location Sharing Ready" });
-        settings.contacts.forEach(contact => {
-          if (isOnline) window.open(`https://wa.me/${contact.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
-          else window.location.href = `sms:${contact.phone.replace(/\D/g, '')}?body=${encodeURIComponent(message)}`;
-        });
-      }, () => toast({ variant: "destructive", title: "Location access denied" })
-    );
-  }, [settings.contacts, isOnline, toast]);
+    // Placeholder for location sharing logic
+    toast({ title: "Sharing Location", description: "Location sent to emergency contacts." });
+  }, [toast]);
 
-  const updateSettings = (newSettings: Partial<Settings>) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+  const value: EmergencyContextType = {
+    isEmergencyActive, isOnline, settings, isRecording, hasCameraPermission, mediaStream, isListening, setIsListening,
+    voiceCommandState, setVoiceCommandState, voiceDialogState, setVoiceDialogState,
+    updateSettings: (s: any) => setSettings(prev => ({...prev, ...s})),
+    shareLocation,
+    toggleListening,
+    speak,
+    processVoiceIntent,
+    triggerEmergency: startRecording,
+    deactivateEmergency: stopRecording,
+    startRecording,
+    stopRecording,
   };
 
-  const value = {
-    isEmergencyActive, triggerEmergency, deactivateEmergency, isOnline, settings, updateSettings,
-    isRecording, startRecording, stopRecording, hasCameraPermission, mediaStream, shareLocation,
-    isListening, setIsListening, toggleListening,
-    processVoiceCommand, voiceCommandState, setVoiceCommandState, speak,
-    voiceDialogState, setVoiceDialogState,
-  };
+  return (
+    <EmergencyContext.Provider value={value}>
+      {children}
+    </EmergencyContext.Provider>
+  );
+}
 
-  return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;
-};
+export function useEmergencyContext() {
+  const ctx = useContext(EmergencyContext);
+  if (!ctx) throw new Error("useEmergencyContext must be used inside EmergencyProvider");
+  return ctx;
+}

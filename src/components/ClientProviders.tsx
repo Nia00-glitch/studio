@@ -1,7 +1,7 @@
 
 "use client";
 
-import 'regenerator-runtime/runtime'; // Import the polyfill here, at the top level.
+import 'regenerator-runtime/runtime';
 import { EmergencyProvider } from '@/contexts/EmergencyContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { Toaster } from '@/components/ui/toaster';
@@ -9,6 +9,7 @@ import MicStatusIndicator from '@/components/MicStatusIndicator';
 import dynamic from 'next/dynamic';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { FirebaseProvider } from '@/lib/firebase/provider'; // Import the new provider
+import React from 'react';
 
 // Dynamically import the VoiceListener component with SSR turned off because it uses browser-only APIs.
 const VoiceListener = dynamic(() => import('@/components/VoiceListener'), {
@@ -20,7 +21,7 @@ function MissingApiKeyError({ service }: { service: string }) {
   const envVar = isMaps ? 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY' : 'NEXT_PUBLIC_FIREBASE_API_KEY';
   const steps = isMaps ? 
     <>
-      <li>Ensure you have a valid Google Maps API key with the <strong>Maps JavaScript API, Places API, and Directions API</strong> enabled.</li>
+      <li>Ensure you have a valid Google Maps API key with the <strong>Maps JavaScript API, Places API, Directions API, and Geometry Library</strong> enabled.</li>
       <li>Create a file named <code className="bg-muted px-1 py-0.5 rounded">.env.local</code> in the root of your project.</li>
     </> :
     <>
@@ -62,7 +63,7 @@ export default function ClientProviders({ children }: { children: React.ReactNod
 
   return (
     <FirebaseProvider>
-      <APIProvider apiKey={googleMapsApiKey}>
+      <APIProvider apiKey={googleMapsApiKey} libraries={['geometry']}>
           <AuthProvider>
             <EmergencyProvider>
               <VoiceListener />
