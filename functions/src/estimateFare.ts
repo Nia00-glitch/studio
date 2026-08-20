@@ -1,13 +1,14 @@
 import * as functions from "firebase-functions";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { z } from "zod";
-import { DirectionsRequest, Client as MapsClient } from "@googlemaps/google-maps-services-js";
+import { DirectionsRequest, Client as MapsClient, TravelMode } from "@googlemaps/google-maps-services-js";
 
 // Define secrets for API keys
-const GOOGLE_MAPS_API_KEY = functions.config().google.maps_api_key ?? process.env.GOOGLE_MAPS_API_KEY;
+// Read from .env (process.env) instead of functions.config() to avoid "undefined" errors in emulator
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 if (!GOOGLE_MAPS_API_KEY) {
-  console.error("FATAL ERROR: GOOGLE_MAPS_API_KEY is not set in environment variables or functions config.");
+  console.warn("⚠️ WARNING: GOOGLE_MAPS_API_KEY is missing in functions/.env. Fare estimation will fail. Set GOOGLE_MAPS_API_KEY to your Maps API key.");
 }
 
 const mapsClient = new MapsClient({});
@@ -53,7 +54,7 @@ export const estimateFare = onCall(async (request) => {
     params: {
       origin: { lat: pickup.lat, lng: pickup.lng },
       destination: { lat: drop.lat, lng: drop.lng },
-      mode: "driving",
+      mode: TravelMode.driving,
       key: GOOGLE_MAPS_API_KEY!,
     },
   };

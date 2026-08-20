@@ -121,10 +121,11 @@ export default function MapComponent({ center, drivers = [], activeRide = null, 
         createOrUpdateMarker('ride_destination', { lat: destinationLocation.latitude, lng: destinationLocation.longitude }, {
             title: 'Destination',
             icon: {
-                path: google.maps.SymbolPath.FLAG,
+                path: 'M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z',
                 fillColor: '#EA4335',
                 fillOpacity: 1,
-                strokeWeight: 0,
+                strokeWeight: 1,
+                strokeColor: '#FFFFFF',
                 scale: 1.5,
             }
         });

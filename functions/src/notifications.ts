@@ -54,7 +54,7 @@ export const notifyDriverOnRideRequest = async (event: { data: DocumentSnapshot,
             const driverData = driverDoc.data();
             const driverId = driverData.driver_id;
             const userDoc = await db.collection('users').doc(driverId).get();
-            if (!userDoc.exists()) continue;
+            if (!userDoc.exists) continue;
 
             const userData = userDoc.data();
             if (!userData?.fcmToken) continue;

@@ -3,8 +3,12 @@ import { ref, uploadBytes } from 'firebase/storage';
 import { getStorage } from 'firebase/storage';
 import { getApps, getApp, initializeApp } from 'firebase/app';
 
+export type StorageUploadReport = 
+  | { status: '✅ Upload Successful'; filePath: string; size: string; contentType?: string; uploadedAt: string }
+  | { status: '❌ Upload Failed'; reason: string; time: string };
+
 // ✅ Smart Firebase Upload with Console Report
-export const uploadRecordingToFirebase = async (blob: Blob) => {
+export const uploadRecordingToFirebase = async (blob: Blob): Promise<StorageUploadReport> => {
   try {
     // This is a temporary workaround because this file is not wrapped in the provider.
     // In a larger app, we would get `storage` from a context.
@@ -20,8 +24,8 @@ export const uploadRecordingToFirebase = async (blob: Blob) => {
     const snapshot = await uploadBytes(fileRef, blob);
 
     // ✅ Report to console or AI Agent
-    const report = {
-      status: '✅ Upload Successful',
+    const report: StorageUploadReport = {
+      status: '✅ Upload Successful' as const,
       filePath: snapshot.metadata.fullPath,
       size: `${(snapshot.metadata.size / 1024).toFixed(2)} KB`,
       contentType: snapshot.metadata.contentType,
@@ -31,9 +35,9 @@ export const uploadRecordingToFirebase = async (blob: Blob) => {
     console.log('📤 Firebase Upload Report:', report);
     return report;
   } catch (error: any) {
-    const errorReport = {
-      status: '❌ Upload Failed',
-      reason: error.message,
+    const errorReport: StorageUploadReport = {
+      status: '❌ Upload Failed' as const,
+      reason: error.message || 'Unknown storage error',
       time: new Date().toLocaleString(),
     };
     console.error('🚨 Firebase Upload Error:', errorReport);

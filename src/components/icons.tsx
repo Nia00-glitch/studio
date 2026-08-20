@@ -1,8 +1,7 @@
 
-import type { SVGProps } from "react";
-import { motion } from 'framer-motion';
+import { motion, type SVGMotionProps } from 'framer-motion';
 
-export function NIAIcon(props: SVGProps<SVGSVGElement>) {
+export function NIAIcon(props: SVGMotionProps<SVGSVGElement>) {
   const circleVariants = {
     hidden: { pathLength: 0, opacity: 0 },
     visible: (i: number) => ({
